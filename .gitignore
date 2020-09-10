@@ -1,0 +1,17 @@
+# .gitignore
+
+# python stuff to be ignored
+__pycache__/
+*.py[cod]
+*$py.class
+
+# jupyter notebooks stuff to be ignored
+.ipynb_checkpoints/
+
+# MacOS stuff to be ignored
+.DS_Store
+
+# unnecessary detail to be ignored
+charts/**
+saved_AU_data/**
+Chrome/**
