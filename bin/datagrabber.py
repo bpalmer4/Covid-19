@@ -14,6 +14,7 @@
 import numpy as np
 import pandas as pd
 import datetime
+import urllib3
 import re
 
 _data_lake = {}
@@ -72,11 +73,17 @@ def _get_eu_http_addr():
     today = datetime.date.today()
     yesterday = (today - 
                  datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-    url = (
-        'https://www.ecdc.europa.eu/sites/default/files/documents/' +
-        f'COVID-19-geographic-disbtribution-worldwide-{yesterday}.xlsx'    
-    )
-    return(url)
+    today = today.strftime('%Y-%m-%d')
+    for day in today, yesterday:
+        url = (
+            'https://www.ecdc.europa.eu/sites/default/files/documents/' +
+            f'COVID-19-geographic-disbtribution-worldwide-{day}.xlsx'    
+        )
+        http = urllib3.PoolManager()
+        request = http.request('GET', url)
+        if request.status == 200:
+            return url
+    return 'EU URL NOT FOUND'
 
 def _eu_column_cleaning(df):
     # some cleaning before the pivot
