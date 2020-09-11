@@ -74,14 +74,16 @@ def _get_eu_http_addr():
     yesterday = (today - 
                  datetime.timedelta(days=1)).strftime('%Y-%m-%d')
     today = today.strftime('%Y-%m-%d')
+    http = urllib3.PoolManager()
     for day in today, yesterday:
         url = (
             'https://www.ecdc.europa.eu/sites/default/files/documents/' +
             f'COVID-19-geographic-disbtribution-worldwide-{day}.xlsx'    
         )
-        http = urllib3.PoolManager()
         request = http.request('GET', url)
-        if request.status == 200:
+        status = request.status
+        request.release_conn()
+        if status == 200:
             return url
     return 'EU URL NOT FOUND'
 
