@@ -1,6 +1,14 @@
 Note:
 
-The ChromeDrive app is to be found in this directory.
+The chromedriver app is to be found in this directory.
+
+It is used by a number of the notebooks to scrape the web
+for data. 
+
+You will need the version that matches the Chrome web browser
+on your system. 
 
 You can download the latest version from here: 
 https://chromedriver.chromium.org/
+
+It is saved as: chromedriver
