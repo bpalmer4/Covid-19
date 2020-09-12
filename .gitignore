@@ -14,4 +14,4 @@ __pycache__/
 # unnecessary detail to be ignored
 charts/**
 saved_AU_data/**
-Chrome/**
+Chrome/chromedriver
