@@ -443,16 +443,10 @@ def plot_new_cum(new, cum, mode, name, **kwargs):
     MARGINS = 0.01
     fig, ax = plt.subplots()
     ax.xaxis_date()
-    ax.margins(MARGINS) # seems to work here
+    #ax.margins(MARGINS) # seems to work here
 
     ax.bar(new.index, new.values, 
                color='#dd0000', label=new_label)
-
-    # This makes the dates for xticklabels nicer
-    locator = mdates.AutoDateLocator(minticks=4, maxticks=10)
-    formatter = mdates.ConciseDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
 
     # plot cumulative
     axr = ax.twinx()
@@ -463,9 +457,11 @@ def plot_new_cum(new, cum, mode, name, **kwargs):
     axr.grid(False)
 
     # put in a legend
+    # let's assume that if len(new) < 100, we are doing recent
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = axr.get_legend_handles_labels()
-    ax.legend(h1+h2, l1+l2, loc='upper left')
+    loc = 'lower left' if len(new) < 100 else 'upper left'
+    axr.legend(h1+h2, l1+l2, loc=loc)
 
     # align the base of the left and right scales
     if (new >= 0).all():
@@ -482,6 +478,15 @@ def plot_new_cum(new, cum, mode, name, **kwargs):
         xlim = axr.get_xlim()
         ax.set_xlim(xlim)
     
+    # This makes the dates for xticklabels nicer
+    # let's assume that if len(new) < 100, we are doing recent
+    locator = mdates.AutoDateLocator(minticks=4, maxticks=13)
+    formatter1 = mdates.ConciseDateFormatter(locator)
+    formatter2 = mdates.DateFormatter("%b-%d")
+    formatter = formatter2 if len(new < 100) else formatter1
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
     # double check on those margins
     ax.margins(MARGINS)
     axr.margins(MARGINS)
