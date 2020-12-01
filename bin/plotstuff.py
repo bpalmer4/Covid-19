@@ -283,7 +283,7 @@ def _annotate_bars_on_chart(series, ax):
     for y, x in enumerate(series):
         xpos = x if x < inside else 0
         color = 'black' if xpos > 0 else 'white'
-        ax.annotate(f'{x}', xy=(xpos+spacer, y), 
+        ax.annotate(f'{x:,}', xy=(xpos+spacer, y), 
                    va='center', color=color, size='small')
 
 
