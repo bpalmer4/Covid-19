@@ -234,46 +234,140 @@ def start_point(country_name):
     return pd.Timestamp('2020-03-01')
 
 
-def _make_figure_adj(fig, kwargs):
-    """ find keywords that relate to the figure,
-        make the change, and return the kwargs
-        dictionary, with these key words removed.
-        Also return tight and savefig."""
+def finalise_plot(ax, **kwargs):
+    """A function to automate the completion of a plot, 
+       including saving it to file and closing the plot when done.
+       
+       Arguments:
+       - ax - required - a matplotlib axes object
+       - title - required - string - the title to appear on the plot
+       - matplotlib axes settings - optional - any/all of the 
+         following : 
+            title, xlabel, ylabel, xticks, yticks, 
+            xticklabels, yticklabels, xlim, ylim, 
+            xscale, yscale, 
+       - lfooter - optional - string - left side chart footer
+       - rfooter - optional - string - right side chart footer
+       - tight_layout_pad - optional - float - tight layout padding
+       - set_size_inches - optional - tuple of floats - plot size,
+         defaults to (8, 4) if not set
+       - save_as - optional - string - filename for saving
+       - chart_directory - optional - string - chart directory for
+         saving plot using the plot title as the name for saving.
+         The save file is defined by the following string:
+         f'{kwargs["chart_directory"]}{title}{save_tag}.{save_type}'
+         [Note: assumes chart_directory has concluding '/' in it].
+       - save_type - optional - string - defaults to 'png' if not set
+       - save_tag - optional - string - additional name
+       - show - whether to show the plot
+       - dont_close - optional - if set and true, the plot is not 
+         closed 
+       
+       Returns: None
+    """
 
-    if 'figsize' in kwargs:
-        fig.set_size_inches(*kwargs['figsize'])
-        del kwargs['figsize']
-    else:
-        fig.set_size_inches(8, 4)
-        
-    if 'lfooter' in kwargs:
-        fig.text(0.01, 0.01, kwargs['lfooter'],
-             ha='left', va='bottom',
-             fontsize=9, fontstyle='italic',
-             color='#999999')
-        del kwargs['lfooter']
-        
-    if 'rfooter' in kwargs:
-        fig.text(0.99, 0.01, kwargs['rfooter'],
-             ha='right', va='bottom',
-             fontsize=9, fontstyle='italic',
-             color='#999999')
-        del kwargs['rfooter']
+    # defaults
+    DEFAULT_SET_SIZE_INCHES = (8, 4)
+    DEFAULT_SAVE_TYPE = 'png'
+    DEFAULT_TIGHT_PADDING = 1.2
+    DEFAULT_SAVE_TAG = ''
+    AXES_SETABLE = ('title', 'xlabel', 'ylabel', 'xticks', 'yticks', 
+                    'xticklabels', 'yticklabels', 'xlim', 'ylim', 
+                    'xscale', 'yscale',)
+    OTHER_SETABLE = ('lfooter', 'rfooter', 'tight_layout_pad', 
+                     'set_size_inches', 'save_as', 'chart_directory',
+                     'save_type', 'save_tag', 'show', 'dont_close')
     
-    tight = None
-    if 'tight' in kwargs:
-        tight = kwargs['tight']
-        del kwargs['tight']
+    # precautionary
+    if 'title' not in kwargs:
+        kwargs['title'] = 'Unknown title'
+    for arg in kwargs:
+        if arg not in AXES_SETABLE and arg not in OTHER_SETABLE:
+            print(f'Warning: argument {arg} in call to '
+                  'finalise_plot not recognised')
+    
+    # usual settings
+    settings = {}
+    for arg in kwargs:
+        if arg not in AXES_SETABLE:
+            continue
+        settings[arg] = kwargs[arg]
+    if len(settings):
+        ax.set(**settings)
+    
+    # some extra width
+    if (('space' not in kwargs) or
+        ('space' in kwargs and kwargs['space'])):
+        xlim = ax.get_xlim()
+        adj = (xlim[1] - xlim[0]) * 0.01
+        ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
+
+    fig = ax.figure
+    
+    # figure size
+    if 'set_size_inches' in kwargs:
+        size = kwargs['set_size_inches']
     else:
-        tight = 1
-        
-    savefig = 'None'
-    if 'savefig' in kwargs:
-        savefig =kwargs['savefig']
-        del kwargs['savefig']
+        size = DEFAULT_SET_SIZE_INCHES
+    fig.set_size_inches(*size)
+    
+    # left footnote
+    if 'rfooter' in kwargs and kwargs['rfooter'] is not None:
+        fig.text(0.99, 0.005, kwargs['rfooter'],
+            ha='right', va='bottom',
+            fontsize=9, fontstyle='italic',
+            color='#999999')
+    
+    # right footnote
+    if 'lfooter' in kwargs and kwargs['lfooter'] is not None:
+        fig.text(0.01, 0.005, kwargs['lfooter'],
+            ha='left', va='bottom',
+            fontsize=9, fontstyle='italic',
+            color='#999999')
 
-    return kwargs, tight, savefig
+    # tight layout
+    if 'tight_layout_pad' in kwargs:
+        pad = kwargs['tight_layout_pad']
+    else:
+        pad = DEFAULT_TIGHT_PADDING
+    fig.tight_layout(pad=pad)
+    
+    # save the plot to file
+    # - save using the specified file name
+    save_as = None
+    if 'save_as' in kwargs:
+        save_as = kwargs['save_as']
+    
+    # - save using a file name built from diretory-title-tag-type
+    elif 'chart_directory' in kwargs:
+        save_type = DEFAULT_SAVE_TYPE 
+        if 'save_type' in kwargs:
+            save_type = kwargs['save_type']
+        save_tag = DEFAULT_SAVE_TAG
+        if 'save_tag' in kwargs:
+            save_tag = kwargs['save_tag']
+        # file-system safe
+        title = kwargs['title'].replace('[:/]', '-')
+        save_as = (f'{kwargs["chart_directory"]}{title}'
+                   f'{save_tag}.{save_type}')
 
+    # - warn if there is no saving arrangement
+    else:
+        print('Warning: You need to sepcify either save_as '
+              'or chart_directory to save a plot to file.\n')
+
+    if save_as:
+        fig.savefig(save_as, dpi=125)
+    
+    # show the plot
+    if 'show' in kwargs and kwargs['show']:
+        plt.show()
+
+    # close the plot
+    if 'dont_close' not in kwargs or not kwargs['dont_close']:
+        plt.close()
+    
+    return None
 
 def _annotate_bars_on_chart(series, ax):
     # annotate the plot
@@ -293,18 +387,8 @@ def plot_barh(series, **kwargs):
     fig, ax = plt.subplots()
     ax.barh(series.index, series, color='gray')
     _annotate_bars_on_chart(series, ax)
-
-    kwargs, tight, savefig = _make_figure_adj(fig, kwargs)
-
     ax.margins(0.01)
-    ax.set(**kwargs)
-    fig.tight_layout(pad=tight)
-    if savefig:
-        fig.savefig(savefig, dpi=125)
-
-    if SHOW: plt.show()
-    plt.close()
-
+    finalise_plot(ax, **kwargs)
 
 # deal with large numbers
 def label_maker(s: pd.Series, base_label: str)-> Tuple[pd.Series, str]:
@@ -346,21 +430,10 @@ def plot_orig_smooth(orig, n, mode, name, **kwargs):
                   
     # final touches
     ax.legend(loc='best')
-    fig = ax.figure
-    kwargs, tight, savefig = _make_figure_adj(fig, kwargs)
-    ax.set(**kwargs)
-    fig.tight_layout(pad=tight)
-    
-    # fudge for ax.margins(0.01) [which does not seem to work]
     xlim = ax.get_xlim()
     adj = (xlim[1] - xlim[0]) * 0.01
     ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
-    
-    if savefig:
-        fig.savefig(savefig, dpi=125)
-
-    if SHOW: plt.show()
-    plt.close()
+    finalise_plot(ax, **kwargs)
     return hendo
 
 
@@ -401,34 +474,13 @@ def plot_growth_factor(new: pd.Series, **kwargs):
     if 'ylabel' in kwargs:
         kwargs['ylabel'] += ' (non-linear scale)'
 
-    fig = ax.figure
-    kwargs, tight, savefig = _make_figure_adj(fig, kwargs)
-    ax.set(**kwargs)
-    
-    # fudge - because ax.margins(0.01) did not work
     xlim = ax.get_xlim()
     adj = (xlim[1] - xlim[0]) * 0.01
     ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
-
-    # put the latest growth factor on the plot
-    right_annotation = ' ($GF_{end}=' f'{np.round(gf_original[-1], 2)}$)'
-    fig.text(0.999, 0.15, right_annotation,
-            rotation=90, ha='right', va='bottom', fontsize=9,
-            color='#333333')
-
-    # wrap up
-    fig.tight_layout(pad=tight)
-    if savefig:
-        fig.savefig(savefig, dpi=125)
-
-    if SHOW: plt.show()
-    plt.close()
-
+    kwargs['rfooter'] = ' ($GF_{end}=' f'{np.round(gf_original[-1], 2)}$)'
+    finalise_plot(ax, **kwargs)
 
 def plot_new_cum(new, cum, mode, name, **kwargs):
-    """ derive new from cumulative series
-    plot new as bars and cumulative s a line.
-    Return the new series."""
     
     # adjust START
     start = start_point(name)
@@ -461,7 +513,7 @@ def plot_new_cum(new, cum, mode, name, **kwargs):
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = axr.get_legend_handles_labels()
     loc = 'lower left' if len(new) < 100 else 'upper left'
-    axr.legend(h1+h2, l1+l2, loc=loc)
+    axr.legend(h1+h2, l1+l2, loc=loc, ncol=2)
 
     # align the base of the left and right scales
     if (new >= 0).all():
@@ -491,10 +543,8 @@ def plot_new_cum(new, cum, mode, name, **kwargs):
     ax.margins(MARGINS)
     axr.margins(MARGINS)
     
-    kwargs, tight, savefig = _make_figure_adj(fig, kwargs)
-    ax.set(**kwargs)
-    
     # y-axis labels - the hard way
+    fig = ax.figure
     lHeight = 0.96
     lInstep = 0.02
     fig.text(1.0-lInstep, lHeight, cum_label,
@@ -504,25 +554,7 @@ def plot_new_cum(new, cum, mode, name, **kwargs):
             ha='left', va='top', fontsize=11,
             color='#333333')
 
-    fig.tight_layout(pad=tight)
-    if savefig:
-        fig.savefig(savefig, dpi=125)
-
-    if SHOW: plt.show()
-    plt.close()
-    return None
-
-#def _add_guides(ax, pos):
-#    ylim = list(ax.get_ylim())
-#    ylim[0] = min(0, ylim[0])
-#    ylim[1] = max(50, ylim[1])
-#    ax.set_ylim(ylim)
-#    for i in [2, 3, 4, 7, 14]: # days
-#        guide = ((2**(1/i)) - 1) * 100 # per cent
-#        ax.axhline(guide, ls=':', color='black', lw=0.75)
-#        ax.text(pos, guide, f'Doubles every {i} days',
-#                ha='left', va='bottom', fontsize=9, 
-#                fontstyle='italic', color='black')
+    finalise_plot(ax, **kwargs)
 
 
 def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
@@ -565,24 +597,18 @@ def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
         # plot this group in color
         subset = df[states]
         ax_new = ax.twinx()
-        subset.plot(ax=ax_new, linewidth=3.5, legend=True)
+        subset.plot(ax=ax_new, linewidth=2.5, legend=True)
         ax_new.legend(title=None, loc="upper left")
         ax_new.grid(False)
         ax_new.set_yticklabels([])
         ax_new.set_ylim(ax.get_ylim())
          
         # finalise
-        fig = ax.figure
-        k_copy, tight, savefig = _make_figure_adj(fig, k_copy)
-        ax.set(**k_copy)
-        fig.tight_layout(pad=tight)
-
         if prefix and generate_title:
             savefig = prefix + '!' + k_copy['title'] + '.png'
-        if savefig:
-            fig.savefig(savefig, dpi=125)
+            kcopy['title'] = savefig
 
-        if SHOW:
-            plt.show()  
-        plt.close()
+        finalise_plot(ax, **k_copy)
+
+        # next loop
         k_copy = copy.deepcopy(saved_k)
