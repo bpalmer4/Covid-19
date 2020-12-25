@@ -194,7 +194,7 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
         - corrected daily new data
         - corrected cumulative data"""
 
-    uncorrected_cum = uncorrected_cum.ffill().fillna(0) 
+    uncorrected_cum = uncorrected_cum.ffill().fillna(0)
     uncorrected_daily_new = get_uncorrected_daily_new(uncorrected_cum)
     corrected_daily_new = get_corrected_daily_new(uncorrected_daily_new)
     corrected_cumulative = corrected_daily_new.cumsum().dropna(how='any', axis='index')
@@ -295,21 +295,7 @@ def finalise_plot(ax, **kwargs):
     if len(settings):
         ax.set(**settings)
     
-    # some extra width
-    if (('space' not in kwargs) or
-        ('space' in kwargs and kwargs['space'])):
-        xlim = ax.get_xlim()
-        adj = (xlim[1] - xlim[0]) * 0.01
-        ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
-
     fig = ax.figure
-    
-    # figure size
-    if 'set_size_inches' in kwargs:
-        size = kwargs['set_size_inches']
-    else:
-        size = DEFAULT_SET_SIZE_INCHES
-    fig.set_size_inches(*size)
     
     # left footnote
     if 'rfooter' in kwargs and kwargs['rfooter'] is not None:
@@ -325,6 +311,14 @@ def finalise_plot(ax, **kwargs):
             fontsize=9, fontstyle='italic',
             color='#999999')
 
+    # figure size
+    if 'set_size_inches' in kwargs:
+        size = kwargs['set_size_inches']
+    else:
+        size = DEFAULT_SET_SIZE_INCHES
+    #print(size)
+    fig.set_size_inches(*size)
+    
     # tight layout
     if 'tight_layout_pad' in kwargs:
         pad = kwargs['tight_layout_pad']
@@ -365,7 +359,7 @@ def finalise_plot(ax, **kwargs):
 
     # close the plot
     if 'dont_close' not in kwargs or not kwargs['dont_close']:
-        plt.close()
+        plt.close('all')
     
     return None
 
@@ -384,7 +378,7 @@ def _annotate_bars_on_chart(series, ax):
 def plot_barh(series, **kwargs):
     """plot series as a horizontal bar chart"""
     
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(nrows=1, ncols=1)
     ax.barh(series.index, series, color='gray')
     _annotate_bars_on_chart(series, ax)
     ax.margins(0.01)
