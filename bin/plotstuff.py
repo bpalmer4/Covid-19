@@ -163,8 +163,8 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
 def get_corrected_daily_new(input_frame: pd.DataFrame)-> pd.DataFrame:
     output_frame = pd.DataFrame()
     for col in input_frame.columns:
-         series = negative_correct_daily(input_frame[col])
-         output_frame[col] = positive_correct_daily(series)
+        series = negative_correct_daily(input_frame[col])
+        output_frame[col] = positive_correct_daily(series)
     return output_frame
 
 
@@ -209,7 +209,7 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
     assert(check2.all())
     assert(len(uncorrected_cum) == len(corrected_cumulative))
     assert(len(uncorrected_daily_new) == len(corrected_daily_new))
-  
+    
     return (uncorrected_daily_new,
             corrected_daily_new,
             corrected_cumulative)
@@ -431,29 +431,34 @@ def plot_orig_smooth(orig, n, mode, name, **kwargs):
     return hendo
 
 
-def plot_growth_factor(new: pd.Series, **kwargs):
-    """Week on week growth in new using a non-linear growth factor axis"""
+def plot_growth_factor(new_: pd.Series, **kwargs):
+    """Week on week growth in new_ using a non-linear growth factor axis
+       Uses the same **kwargs as finalise_plot()
+       Note: if rfooter in **kwargs, it will be over-written"""
 
     # calculate rolling average week-on-week growth factor    
     WEEK = 7 # days
-    gf = new.rolling(WEEK).mean()
+    gf = new_.rolling(WEEK).mean()
     gf_original = gf / gf.shift(WEEK)
-
+    
     # adjusted scale
     gf = gf_original.where(gf_original<=1, other=2-(1/gf_original))
 
     # trims the start date
-    start = start_point(new.name)
+    start = start_point(new_.name)
     gf = gf[gf.index >= start]
 
-    # plot above and below 1 in different colours - resample to hourly to do this
+    # plot above and below 1 in different colours 
+    # - resample to hourly to do this
     # this code is a bit of a hack
-    gf1 = gf.resample('H').interpolate(method='linear', limit=23, limit_area="inside",
+    gf1 = gf.resample('H').interpolate(method='linear', limit=23, 
+                                       limit_area="inside",
                                       limit_direction='forward')
-    gf2 = gf.resample('H').interpolate(method='linear', limit=23, limit_area="inside",
+    gf2 = gf.resample('H').interpolate(method='linear', limit=23, 
+                                       limit_area="inside",
                                       limit_direction='backward')
-    gf = gf1.where(gf1.notna() & gf2.notna(), other=np.nan) # note data is now hourly
-    below = gf.where(gf < 1, other=np.nan)                 # note data is now hourly
+    gf = gf1.where(gf1.notna() & gf2.notna(), other=np.nan) 
+    below = gf.where(gf < 1, other=np.nan)                 
     
     # plot
     ax = gf.plot.line(lw=2, color='#B81D13', label='Growth (>1)')
@@ -466,7 +471,7 @@ def plot_growth_factor(new: pd.Series, **kwargs):
                         "$\\frac{1}{2}$", "$\\frac{3}{4}$", "1", 
                         "$\\frac{4}{3}$", "2", "3", "6", "$\infty$"])
     if 'ylabel' in kwargs:
-        kwargs['ylabel'] += ' (non-linear scale)'
+        kwargs['ylabel'] += '\n(non-linear scale)'
 
     xlim = ax.get_xlim()
     adj = (xlim[1] - xlim[0]) * 0.01
@@ -474,6 +479,7 @@ def plot_growth_factor(new: pd.Series, **kwargs):
     kwargs['rfooter'] = ' ($GF_{end}=' f'{np.round(gf_original[-1], 2)}$)'
     finalise_plot(ax, **kwargs)
 
+    
 def plot_new_cum(new, cum, mode, name, **kwargs):
     
     # adjust START
