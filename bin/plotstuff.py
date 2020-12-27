@@ -384,6 +384,7 @@ def plot_barh(series, **kwargs):
     ax.margins(0.01)
     finalise_plot(ax, **kwargs)
 
+    
 # deal with large numbers
 def label_maker(s: pd.Series, base_label: str)-> Tuple[pd.Series, str]:
     label = base_label
@@ -480,83 +481,152 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     finalise_plot(ax, **kwargs)
 
     
-def plot_new_cum(new, cum, mode, name, **kwargs):
+def simplify_values(series):
+    s = series.copy().astype(float)
+    numerical = ('', '$10^3$', '$10^6$', '$10^9$', '$10^12$', '$10^16$')
+    text = ('', 'Thousand', 'Million', 'Billion', 'Trillion', 'Quadrillion')
+    index = 0
+    while s.max() > 1000:
+        s = s / 1000.0
+        index += 1
+    return s, numerical[index], text[index]
+
+    
+def plot_new_cum(new: pd.Series, cum:pd.Series, 
+                 mode: str, name: str, period: str, 
+                 dfrom="2020-01-21", **kwargs, ):
+    
+    # adjust input data for large numbers
+    new, numerical, text = simplify_values(new)
+    cum, cnumerical, ctext = simplify_values(cum)
+    new_legend_label = f'{text} new {mode}/{period} (left)'.strip().capitalize()
+    cum_legend_label = f'{ctext} cumulative {mode} (right)'.strip().capitalize()
+    new_ylabel = f'{numerical} new {mode.lower()}/{period}'.strip().capitalize()
+    cum_ylabel = f'{cnumerical} cumulative {mode}'.strip().capitalize()
     
     # adjust START
-    start = start_point(name)
-    new = new[new.index >= start]
-    cum = cum[cum.index >= start]
-    
-    # adjust for large numbers
-    cum, cum_label = label_maker(cum, f'Total {mode}')
-    new, new_label = label_maker(new, f'New {mode}')
+    DISPLAY_FROM = pd.Timestamp(dfrom)
+    new = new[new.index >= DISPLAY_FROM]
+    cum = cum[cum.index >= DISPLAY_FROM]
     
     # plot new
-    MARGINS = 0.01
+    widths = {
+        'day': 0.8,
+        'week': 5,
+    }
     fig, ax = plt.subplots()
-    ax.xaxis_date()
-    #ax.margins(MARGINS) # seems to work here
-
-    ax.bar(new.index, new.values, 
-               color='#dd0000', label=new_label)
+    ax.margins(0.01)
+    ax.bar(new.index, new.values, width=widths[period],
+           color='#dd0000', label=new_legend_label)
+    ax.set_xlabel(None)
 
     # plot cumulative
     axr = ax.twinx()
     axr.plot(cum.index, cum.values,
              lw=2.0, color='#0000dd', ls='--',
-             label=cum_label)
+             label=cum_legend_label)
     axr.set_ylabel(None)
     axr.grid(False)
 
-    # put in a legend
-    # let's assume that if len(new) < 100, we are doing recent
+    # add a legend
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = axr.get_legend_handles_labels()
-    loc = 'lower left' if len(new) < 100 else 'upper left'
-    axr.legend(h1+h2, l1+l2, loc=loc, ncol=2)
+    ax.legend(h1+h2, l1+l2, loc='upper left', fontsize='small')
 
-    # align the base of the left and right scales
-    if (new >= 0).all():
-        yliml = list(ax.get_ylim())
-        yliml[0] = 0
-        ax.set_ylim(yliml)
-    if (cum >= 0).all():
-        ylimr = list(axr.get_ylim())
-        ylimr[0] = 0
-        axr.set_ylim(ylimr)
+    # adjust y-limits to be prettier, 
+    # assume ylim[0] is zero, but also check
+    # this adjustment should not be needed, but it is
+    ylim = ax.get_ylim()
+    ylim = ylim[0], ylim[1] * 1.025
+    if ylim[0] != 0:
+        # this should not happen - ever.
+        print(f'Warning: ylim[0] is {ylim[0]} for {name}')
+    ylimr = axr.get_ylim()
+    axr.set_ylim((0, ylimr[1]))
     
     # Not sure why - but I need this
-    if (new < 0).any():
-        xlim = axr.get_xlim()
-        ax.set_xlim(xlim)
-    
-    # This makes the dates for xticklabels nicer
-    # let's assume that if len(new) < 100, we are doing recent
+    #if (new < 0).any():
+    #    xlim = axr.get_xlim()
+    #    ax.set_xlim(xlim)
+
+    # This makes the dates for xticklabels look a little nicer
     locator = mdates.AutoDateLocator(minticks=4, maxticks=13)
-    formatter1 = mdates.ConciseDateFormatter(locator)
-    formatter2 = mdates.DateFormatter("%b-%d")
-    formatter = formatter2 if len(new < 100) else formatter1
+    formatter = mdates.ConciseDateFormatter(locator)
     ax.xaxis.set_major_locator(locator)
     ax.xaxis.set_major_formatter(formatter)
 
-    # double check on those margins
-    ax.margins(MARGINS)
-    axr.margins(MARGINS)
-    
     # y-axis labels - the hard way
     fig = ax.figure
     lHeight = 0.96
     lInstep = 0.02
-    fig.text(1.0-lInstep, lHeight, cum_label,
+    fig.text(1.0-lInstep, lHeight, cum_ylabel,
             ha='right', va='top', fontsize=11,
             color='#333333')
-    fig.text(lInstep, lHeight, new_label,
+    fig.text(lInstep, lHeight, new_ylabel,
             ha='left', va='top', fontsize=11,
             color='#333333')
 
     finalise_plot(ax, **kwargs)
 
 
+def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
+    """Plot weekly bar charts for daily new cases and deaths
+        Function paramters:
+        - daily is a DataFrame of daily timeseries data
+        - mode is one of 'cases' or 'deaths' 
+        - data_quality is a Series of strings,
+            used for the left footnote on charts
+        - dfrom is a date string to display from
+        Returns: weekly data in a DataFrame """
+    
+    DISPLAY_FROM = pd.Timestamp(dfrom)
+    
+    # find the day that the week ends - last day of dataframe
+    LAST_DAY = daily.index[-1]
+    RULE = {
+        0: 'W-MON',
+        1: 'W-TUE',
+        2: 'W-WED',
+        3: 'W-THU',
+        4: 'W-FRI',
+        5: 'W-SAT',
+        6: 'W-SUN',
+    }[LAST_DAY.dayofweek]
+
+    # convert the data to weekly
+    returnable = weekly = daily.resample(rule=RULE, 
+                                         closed='right').sum()
+    total = weekly.sum()
+    cum_weekly = weekly.cumsum()
+    
+    # we move the data by half a week becuase 
+    # we want the bars to be centred
+    weekly.index = weekly.index - pd.Timedelta(3.5, unit='d')
+    cum_weekly.index = cum_weekly.index - pd.Timedelta(3.5, unit='d')
+    
+    for name in weekly.columns:
+    
+        # avoid plotting an empty plot
+        if total[name] == 0: continue
+
+        plot_new_cum(
+            weekly[name].copy(), 
+            cum_weekly[name].copy(), 
+            mode, 
+            name,
+            'week',
+            dfrom, 
+            title=f'{name}: COVID-19 {mode.title()}',
+            rfooter=data_quality[name],
+            lfooter=f'Total {mode.lower()}: '
+                    f'{int(total[name]):,}; '
+                    f'(WE={RULE[-3:].title()})',
+            **kwargs,
+        )
+        
+    return returnable
+
+    
 def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
     # constants
     ROLLING_AVE = 7 # days
@@ -576,14 +646,6 @@ def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
     if not 'xlabel' in k_copy:
         k_copy['xlabel'] = None
             
-    if 'savefig_prefix' in k_copy:
-        prefix = k_copy['savefig_prefix']
-        del k_copy['savefig_prefix']
-    else:
-        prefix = None
-    
-    generate_title = not 'title' in k_copy
-    
     saved_k = copy.deepcopy(k_copy)
     for region, states in regions.items():
   
@@ -591,8 +653,7 @@ def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
         ax = df.plot(c='#aaaaaa', lw=0.5)
         ax.get_legend().remove()
        
-        if generate_title:
-            k_copy['title'] = f'COVID-19 Daily New {mode.title()} - {region}'
+        k_copy['title'] = f'COVID-19 Daily New {mode.title()} - {region}'
         
         # plot this group in color
         subset = df[states]
@@ -604,10 +665,6 @@ def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
         ax_new.set_ylim(ax.get_ylim())
          
         # finalise
-        if prefix and generate_title:
-            savefig = prefix + '!' + k_copy['title'] + '.png'
-            kcopy['title'] = savefig
-
         finalise_plot(ax, **k_copy)
 
         # next loop
