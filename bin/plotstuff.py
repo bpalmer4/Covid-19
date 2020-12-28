@@ -10,23 +10,7 @@ import copy
 from Henderson import Henderson
 from typing import Tuple, Set, Dict, List, Union, Optional
 
-SHOW=False
-
 ### --- data cleaning
-
-#def restore_leading_nans(frame: pd.DataFrame)-> pd.DataFrame:
-#    for col in frame.columns:
-#        series = frame[col]
-#        if series[0] != 0:
-#            continue # there are no leading zeros
-#        # reinstate leading nan values
-#        if series.ne(0).sum() == 0:
-#           continue # to be sure
-#        index = series[series.ne(0)].index[0]
-#        position = frame.index.get_loc(index)
-#        frame[col][0:position] = np.nan
-#    return frame
-
 
 def hollow_mean(series: pd.Series, middle:int = None)-> pd.Series:
     """ Calculate the mean of a series, ignoring the middle element. """
@@ -85,12 +69,13 @@ def replace_nearby(series, point, replacement)-> pd.Series:
         if local < 0:
             local = 0
         series[point] = local
-        
+    
     return series
 
 
 def rolling_zero_count(series: pd.Series, WINDOW: int=15)-> pd.Series:
-    return series.rolling(WINDOW, center=True).apply(lambda x: (x <= 0).sum()).ffill()
+    return series.rolling(WINDOW, center=True).apply(
+        lambda x: (x <= 0).sum()).ffill()
 
 
 def negative_correct_daily(series: pd.Series)-> pd.Series:
@@ -114,9 +99,10 @@ def negative_correct_daily(series: pd.Series)-> pd.Series:
         if series[fix_me] < 0 and series[fix_me] >= MINOR_NEG:
             series = replace_nearby(series, fix_me, replacement=0)
         else:
-            series = replace_proportional(series, fix_me, replacement=rolling_mean[fix_me])
-
+            series = replace_proportional(series, fix_me, 
+                                          replacement=rolling_mean[fix_me])
     return series
+
 
 def positive_correct_daily(series: pd.Series)-> pd.Series:
     """Correct excess positive spikes in a series."""
@@ -125,12 +111,13 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
     SPIKE = 5 # defined as SPIKE times the local daily normal
 
     # consecutive data check - no point trying to deal with outliers in sparse data
-    AT_LEAST_ONCE_CONSEC = 15 # somewhere in the series we have some consecutive data
+    AT_LEAST_ONCE_CONSEC = 15 # n the series we have some consecutive data
     positive = (series >= 0.001).astype(int)
     id = positive.diff().ne(0).cumsum()
     max_consecutive = positive.groupby(id).cumsum().max()
     if max_consecutive < AT_LEAST_ONCE_CONSEC:
-        print(f'Data too sparse in {series.name} (max_consecutive={max_consecutive})')
+        print(f'Data too sparse in {series.name} '
+              f'(max_consecutive={max_consecutive})')
         return series
     
     # identify adjustments
@@ -143,18 +130,24 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
     # make changes
     original = series.copy()
     if len(spikes):
-        spike_frame = pd.DataFrame([series[spikes], rolling_mean[spikes], zeros[spikes]], 
-                                  index=["spike", "mean", "zeros"])
+        spike_frame = pd.DataFrame([series[spikes], 
+                                    rolling_mean[spikes], 
+                                    zeros[spikes]], 
+                                    index=["spike", "mean", "zeros"])
         print(f'Spikes in {series.name}\n{spike_frame}')
+        
     for fix_me in spikes:
-        series = replace_proportional(series, fix_me, replacement=rolling_mean[fix_me])
+        series = replace_proportional(series, fix_me, 
+                                      replacement=rolling_mean[fix_me])
 
     # check nothing has gone wrong
     # final check - do no harm
     ACCEPTABLE_INCREASE = 1.075 # 7.5 per cent is the Max acceptable increase
-    if (series.max() > (original.max() * ACCEPTABLE_INCREASE)) & (original >= 0).all():
+    if ((series.max() > (original.max() * ACCEPTABLE_INCREASE)) 
+        & (original >= 0)).all():
         # we have not made things better
-        print(f'Spike not fixed for {series.name} ({series.max() / original.max()})')
+        print(f'Spike not fixed for {series.name} '
+              f'({series.max() / original.max()})')
         series = original
 
     return series
@@ -197,15 +190,16 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
     uncorrected_cum = uncorrected_cum.ffill().fillna(0)
     uncorrected_daily_new = get_uncorrected_daily_new(uncorrected_cum)
     corrected_daily_new = get_corrected_daily_new(uncorrected_daily_new)
-    corrected_cumulative = corrected_daily_new.cumsum().dropna(how='any', axis='index')
+    corrected_cumulative = corrected_daily_new.cumsum().dropna(
+        how='all', axis='index')
 
     # sanity checks - cumulative totals should not have changed
     delta = 0.0001
     check = ( (uncorrected_cum.iloc[-1]-delta < corrected_cumulative.iloc[-1]) &
               (corrected_cumulative.iloc[-1] < uncorrected_cum.iloc[-1]+delta) )
     assert(check.all())
-    check2 = ( ( (uncorrected_daily_new.sum() - delta) < corrected_daily_new.sum()) &
-                 (corrected_daily_new.sum() < (uncorrected_daily_new.sum() + delta) ) )
+    check2 = (((uncorrected_daily_new.sum() - delta) < corrected_daily_new.sum())
+              & (corrected_daily_new.sum() < (uncorrected_daily_new.sum() + delta)))
     assert(check2.all())
     assert(len(uncorrected_cum) == len(corrected_cumulative))
     assert(len(uncorrected_daily_new) == len(corrected_daily_new))
@@ -385,24 +379,26 @@ def plot_barh(series, **kwargs):
     finalise_plot(ax, **kwargs)
 
     
-# deal with large numbers
-def label_maker(s: pd.Series, base_label: str)-> Tuple[pd.Series, str]:
-    label = base_label
-    if s.max() > 2_000_000:
-        s /= 1_000_000 
-        label += ' ($10^6$)'
-    elif s.max() > 2_000:
-        s /= 1_000
-        label += " ($10^3$)"
-    return s, label
+def simplify_values(series):
+    s = series.copy().astype(float)
+    numerical = ('', '$10^3$', '$10^6$', '$10^9$', '$10^12$', '$10^16$')
+    text = ('', 'Thousand', 'Million', 'Billion', 'Trillion', 'Quadrillion')
+    index = 0
+    while s.max() > 1000.0:
+        s = s / 1000.0
+        index += 1
+    return s, numerical[index], text[index]
 
-
+    
 def plot_orig_smooth(orig, n, mode, name, **kwargs):
     """plot series in original and smoothed forms,
-       return the smoothed series"""
+       return the smoothed series
+       Note: kwargs['ylabel'] is overwritten"""
     
-    orig, label = label_maker(orig, f'Daily new {mode}')
-    if 'ylabel' in kwargs: kwargs['ylabel'] = label
+    # get series into simplified values and create ylabel
+    orig, _, text = simplify_values(orig)
+    label = f'{text} daily new {mode}'.strip().capitalize()
+    kwargs['ylabel'] = label
     
     # Henderson moving average
     hendo = Henderson(orig.dropna(), n)
@@ -479,17 +475,6 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
     kwargs['rfooter'] = ' ($GF_{end}=' f'{np.round(gf_original[-1], 2)}$)'
     finalise_plot(ax, **kwargs)
-
-    
-def simplify_values(series):
-    s = series.copy().astype(float)
-    numerical = ('', '$10^3$', '$10^6$', '$10^9$', '$10^12$', '$10^16$')
-    text = ('', 'Thousand', 'Million', 'Billion', 'Trillion', 'Quadrillion')
-    index = 0
-    while s.max() > 1000:
-        s = s / 1000.0
-        index += 1
-    return s, numerical[index], text[index]
 
     
 def plot_new_cum(new: pd.Series, cum:pd.Series, 
