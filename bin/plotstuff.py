@@ -1,4 +1,6 @@
-# plot stuff
+# plot stuff - a series of functions to assit with (a) data ETL 
+#              and (b) plotting for COVID-19 
+
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.units as munits
@@ -7,13 +9,24 @@ import pandas as pd
 import numpy as np
 import math
 import copy
+import sys
 from Henderson import Henderson
 from typing import Tuple, Set, Dict, List, Union, Optional
 
+
 ### --- data cleaning
 
-def hollow_mean(series: pd.Series, middle:int = None)-> pd.Series:
-    """ Calculate the mean of a series, ignoring the middle element. """
+def hollow_mean(series: pd.Series, middle:int = None)-> float:
+    """ Calculate the mean of a series, ignoring the middle 
+        element.
+        Aguments:
+        - series - pandas Series - the series for which a single 
+            hollow-mean will be calculated
+        - middle - optional int - the integer index of the middle
+            item in the series (to be excluded from the mean), 
+            where series has an integer index from 0 to length-1.
+        Returns: the mean as a float"""
+    
     length = len(series)
     if middle is None:
         middle = int(length / 2)
@@ -21,68 +34,129 @@ def hollow_mean(series: pd.Series, middle:int = None)-> pd.Series:
     return (series.iloc[:middle].sum() + series[middle+1:].sum()) / (length - 1)
 
 
-def rolling_mean_excluding_self(series: pd.Series, WINDOW: int=15)-> pd.Series:
-    """ Calculate the hollow_mean() for each element in a series. """
+def rolling_mean_excluding_self(series: pd.Series, window: int=15)-> pd.Series:
+    """ Calculate the hollow_mean() for each element in a series. 
+        Note: negative items in the series will be treated as zero.
+        Note: at the head of the series, items up until window/2 are
+              returned as the the rolling_mean
+        Note: at the tail of the series, them same mean is returned for 
+              the final window/2 items
+        Arguments:
+        - series - pandas Series - the series for which the 
+            hollow-mean will be calculated for each item.
+        - window - the size of the rolling window used for calculating  
+            the hollow_mean()
+        Returns: a series of means"""
     
-    # work with a positive series so negativ spikes don't set us off
     positive = series.where(series >= 0, other = 0)
-    mean = positive.rolling(WINDOW, center=True).apply(hollow_mean)
-    for n in range(int(WINDOW / 2) + 1, WINDOW):
-        position = -(WINDOW - n)
-        mean.iloc[position] =  hollow_mean(positive[-WINDOW:], n)   
+    mean = positive.rolling(window, center=True).apply(hollow_mean)
+    for n in range(int(window / 2) + 1, window):
+        position = -(window - n)
+        mean.iloc[position] =  hollow_mean(positive[-window:], n)   
     return mean
 
 
-def replace_proportional(series, point, replacement)-> pd.Series:
+def replace_proportional(series: pd.Series, point:pd.Timestamp, 
+                         replacement: float)-> pd.Series:
+    """ For a series, replace the element at .loc[point], then 
+        proportionately apply the adjustment to the elements
+        before point. 
+        Aguments:
+        - series - pd.Series - the series we are going to adjust
+        - point - pd.Timestamp - the point in the series we will adjust
+        - replacement - float - the replacement value for the adjustment
+        Assumes:
+        - the index of series is unique and monotonic_increasing.
+        - all elements of series before point are zero or positive.
+        Returns: 
+        - an ajdusted series with the same sum as the original series"""
+    
+    # work non-destructively on a copoy of the data
+    series_ = series.copy()
+    
+    # sanity checks
+    #assert(series_.index.is_monotonic_increasing)
+    #assert(series_.index.is_unique)
+    
     # replace original and remember the adjustment from the original
-    adjustment = series[point] - replacement
-    series.loc[point] = replacement
+    adjustment = series_[point] - replacement
+    series_.loc[point] = replacement
             
     # apply adjustment to this point and all preceeding data
-    base = series.index[0]
-    window = ((series.index >= base) & (series.index <= point))
-    sum_for_window = series[window].sum()
+    base = series_.index[0]
+    window = (series_.index <= point)
+    #assert((series_[window] >= 0).all()) # a sanity check
+    sum_for_window = series_[window].sum()
     if sum_for_window > 0:
         factor = (sum_for_window + adjustment) / sum_for_window
-        series[window] = series[window] * factor
+        series_[window] = series_[window] * factor
     else:
-        print(f'Warning: negative adjustment {series.name}')
-        assert(False)
-        series[window] = 0
+        print(f'Warning: negative adjustment {series_.name}')
+        sys.exit(1)
     
-    return series
+    return series_
 
 
-def replace_nearby(series, point, replacement)-> pd.Series:
+def replace_nearby(series: pd.Series, point:pd.Timestamp, 
+                         replacement: float)-> pd.Series:
+    """ For a series, replace the element at .loc[point],  
+        then apply the adjustment to the elements immediately 
+        before point. 
+        Aguments:
+        - series - pd.Series - the series we are going to adjust
+        - point - pd.Timestamp - the point in the series we will adjust
+        - replacement - float - the replacement value for the adjustment
+        Assumes:
+        - the index of series is unique and monotonic_increasing.
+        - all elements of series before point are zero or positive.
+        Returns: 
+        - an ajdusted series with the same sum as the original series"""
+
+    # work non-destructively on a copoy of the data
+    series_ = series.copy()
+    
+    # sanity checks
+    #assert(series_.index.is_monotonic_increasing)
+    #assert(series_.index.is_unique)
+ 
     # replace original and remember the adjustment from the original
-    adjustment = series[point] - replacement
+    adjustment = series_[point] - replacement
     assert(adjustment < 0) # should only be for taking away adjustments
-    series.loc[point] = replacement
-    base = series.index[0]
+    series_.loc[point] = replacement
 
-    while adjustment <= 0 and point > base:
-        point = point - pd.Timedelta(days=1)
-        if (local := series[point]) <= 0:
+    for p in reversed(series_.index[series_.index < point]):
+        if adjustment >= 0:
+            break
+        if (local := series_[p]) <= 0:
             continue
         local += adjustment
         adjustment = local
         if local < 0:
             local = 0
-        series[point] = local
+        series_[p] = local
+
+    # check we have fixed the adjustment
+    assert(adjustment >= 0)
     
-    return series
+    return series_
 
 
-def rolling_zero_count(series: pd.Series, WINDOW: int=15)-> pd.Series:
-    return series.rolling(WINDOW, center=True).apply(
-        lambda x: (x <= 0).sum()).ffill()
+def rolling_zero_count(series: pd.Series, window: int=15)-> pd.Series:
+    """ Count the number of zero or negative values nearby each 
+        element in a series, where nerby is defined by the centered 
+        window parameter."""
+    
+    return ( series
+              .rolling(window, center=True)
+              .apply(lambda x: (x <= 0).sum())
+              .ffill() )
 
 
 def negative_correct_daily(series: pd.Series)-> pd.Series:
     """Correct negative adjustments to a series."""
     
     # Thresholds ... for correction
-    MINOR_NEG = -10 # treat MINOR negative adjustments as local-temporal
+    MINOR_NEG = -12 # treat MINOR negative adjustments as local-temporal
     
     # zero nans and sort
     series = series.sort_index(ascending=True).fillna(0)
@@ -94,9 +168,10 @@ def negative_correct_daily(series: pd.Series)-> pd.Series:
     # make changed
     original = series.copy()
     if len(negatives):
-        print(f'Negatives in {series.name}\n{series[negatives]}')
+        print(f'There are negatives in {series.name}\n{series[negatives]}')
     for fix_me in negatives:
-        if series[fix_me] < 0 and series[fix_me] >= MINOR_NEG:
+        assert(series[fix_me] < 0)
+        if series[fix_me] >= MINOR_NEG:
             series = replace_nearby(series, fix_me, replacement=0)
         else:
             series = replace_proportional(series, fix_me, 
