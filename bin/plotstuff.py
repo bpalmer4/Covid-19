@@ -1,4 +1,4 @@
-# plot stuff - a series of functions to assit with (a) data ETL 
+# plot stuff - a series of functions to assist with (a) data ETL 
 #              and (b) plotting for COVID-19 
 
 import matplotlib.pyplot as plt
@@ -18,10 +18,11 @@ from typing import Tuple, Set, Dict, List, Union, Optional
 
 def hollow_mean(series: pd.Series, middle:int = None)-> float:
     """ Calculate the mean of a series, ignoring the middle 
-        element.
+        element. (Used for data spike detection).
         Aguments:
         - series - pandas Series - the series for which a single 
-            hollow-mean will be calculated
+            hollow-mean will be calculated. The length of the series
+            must be >= 3 and odd. 
         - middle - optional int - the integer index of the middle
             item in the series (to be excluded from the mean), 
             where series has an integer index from 0 to length-1.
@@ -30,12 +31,13 @@ def hollow_mean(series: pd.Series, middle:int = None)-> float:
     length = len(series)
     if middle is None:
         middle = int(length / 2)
-    assert(length >= 3 and length % 2)
-    return (series.iloc[:middle].sum() + series[middle+1:].sum()) / (length - 1)
+    #assert(length >= 3 and length % 2)
+    return (series.iloc[:middle].sum() 
+            + series[middle+1:].sum()) / (length - 1)
 
 
 def rolling_mean_excluding_self(series: pd.Series, window: int=15)-> pd.Series:
-    """ Calculate the hollow_mean() for each element in a series. 
+    """ Calculate the rolling hollow_mean() for each element in a series. 
         Note: negative items in the series will be treated as zero.
         Note: at the head of the series, items up until window/2 are
               returned as the the rolling_mean
@@ -221,7 +223,7 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
 
     # check nothing has gone wrong
     # final check - do no harm
-    ACCEPTABLE_INCREASE = 1.075 # 7.5 per cent is the Max acceptable increase
+    ACCEPTABLE_INCREASE = 1.075 # 7.5 per cent is the max acceptable increase
     if ((series.max() > (original.max() * ACCEPTABLE_INCREASE)) 
         & (original >= 0)).all():
         # we have not made things better
