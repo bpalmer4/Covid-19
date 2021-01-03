@@ -152,7 +152,7 @@ def rolling_zero_count(series: pd.Series, window: int=15)-> pd.Series:
               .ffill() )
 
 
-def negative_correct_daily(series: pd.Series)-> pd.Series:
+def negative_correct_daily(series: pd.Series, verbose)-> pd.Series:
     """ Correct negative adjustments to a series.
         Small negatives will be adjusted against immediately prior
         positives in the series. Large negatives will be adjusted 
@@ -172,8 +172,9 @@ def negative_correct_daily(series: pd.Series)-> pd.Series:
     # identify the places needing adjustment
     negatives = series[series < 0].index
     if (series[negatives] < 0).any():
-        print(f'There are negatives in {series.name}')
-        print(f'{series[negatives]}')
+        if verbose:
+            print(f'There are negatives in {series.name}')
+            print(f'{series[negatives]}')
         replacers = rolling_mean_excluding_self(series)
         # make the adjustments
         for fix_me in negatives:
@@ -185,7 +186,7 @@ def negative_correct_daily(series: pd.Series)-> pd.Series:
     return series
 
 
-def positive_correct_daily(series: pd.Series)-> pd.Series:
+def positive_correct_daily(series: pd.Series, verbose)-> pd.Series:
     """Correct excess positive spikes in a series."""
 
     MIN_SPIKE = 30 # ignore smaller spikes
@@ -197,8 +198,9 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
     id = positive.diff().ne(0).cumsum()
     max_consecutive = positive.groupby(id).cumsum().max()
     if max_consecutive < AT_LEAST_ONCE_CONSEC:
-        print(f'Data too sparse in {series.name} '
-              f'(max_consecutive={max_consecutive})')
+        if verbose:
+            print(f'Data too sparse in {series.name} '
+                  f'(max_consecutive={max_consecutive})')
         return series
     
     # identify adjustments
@@ -215,7 +217,8 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
                                     rolling_mean[spikes], 
                                     zeros[spikes]], 
                                     index=["spike", "mean", "zeros"])
-        print(f'Spikes in {series.name}\n{spike_frame}')
+        if verbose:
+            print(f'Spikes in {series.name}\n{spike_frame}')
         
     for fix_me in spikes:
         series = replace_proportional(series, fix_me, 
@@ -227,18 +230,19 @@ def positive_correct_daily(series: pd.Series)-> pd.Series:
     if ((series.max() > (original.max() * ACCEPTABLE_INCREASE)) 
         & (original >= 0)).all():
         # we have not made things better
-        print(f'Spike not fixed for {series.name} '
-              f'({series.max() / original.max()})')
+        if verbose:
+            print(f'Spike not fixed for {series.name} '
+                  f'({series.max() / original.max()})')
         series = original
 
     return series
 
 
-def get_corrected_daily_new(input_frame: pd.DataFrame)-> pd.DataFrame:
+def get_corrected_daily_new(input_frame: pd.DataFrame, verbose)-> pd.DataFrame:
     output_frame = pd.DataFrame()
     for col in input_frame.columns:
-        series = negative_correct_daily(input_frame[col])
-        output_frame[col] = positive_correct_daily(series)
+        series = negative_correct_daily(input_frame[col], verbose)
+        output_frame[col] = positive_correct_daily(series, verbose)
     return output_frame
 
 
@@ -260,7 +264,7 @@ def get_uncorrected_daily_new(frame: pd.DataFrame)-> pd.DataFrame:
 
 
 def dataframe_correction(uncorrected_cum: pd.DataFrame, 
-        corrections: Optional[pd.DataFrame]=None)-> Tuple[
+        corrections: Optional[pd.DataFrame]=None, verbose=True)-> Tuple[
         pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """ Take an uncorrected dataframe of daily cumulative data,
         and return three dataframes:
@@ -270,7 +274,7 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
 
     uncorrected_cum = uncorrected_cum.ffill().fillna(0)
     uncorrected_daily_new = get_uncorrected_daily_new(uncorrected_cum)
-    corrected_daily_new = get_corrected_daily_new(uncorrected_daily_new)
+    corrected_daily_new = get_corrected_daily_new(uncorrected_daily_new, verbose)
     corrected_cumulative = corrected_daily_new.cumsum().dropna(
         how='all', axis='index')
 
@@ -372,14 +376,14 @@ def finalise_plot(ax, **kwargs):
     
     fig = ax.figure
     
-    # left footnote
+    # right footnote
     if 'rfooter' in kwargs and kwargs['rfooter'] is not None:
         fig.text(0.99, 0.005, kwargs['rfooter'],
             ha='right', va='bottom',
             fontsize=9, fontstyle='italic',
             color='#999999')
     
-    # right footnote
+    # left footnote
     if 'lfooter' in kwargs and kwargs['lfooter'] is not None:
         fig.text(0.01, 0.005, kwargs['lfooter'],
             ha='left', va='bottom',
