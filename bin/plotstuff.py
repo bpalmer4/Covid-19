@@ -339,6 +339,7 @@ def finalise_plot(ax, **kwargs):
        - save_type - optional - string - defaults to 'png' if not set
        - save_tag - optional - string - additional name
        - show - whether to show the plot
+       - display - whether to display the plot (from Jupyter Notebook)
        - dont_close - optional - if set and true, the plot is not 
          closed 
        
@@ -355,7 +356,8 @@ def finalise_plot(ax, **kwargs):
                     'xscale', 'yscale',)
     OTHER_SETABLE = ('lfooter', 'rfooter', 'tight_layout_pad', 
                      'set_size_inches', 'save_as', 'chart_directory',
-                     'save_type', 'save_tag', 'show', 'dont_close')
+                     'save_type', 'save_tag', 'show', 'display',
+                     'dont_close')
     
     # precautionary
     if 'title' not in kwargs:
@@ -435,6 +437,10 @@ def finalise_plot(ax, **kwargs):
     # show the plot
     if 'show' in kwargs and kwargs['show']:
         plt.show()
+
+    # display the plot (from Jupyter Notebook)
+    if 'display' in kwargs and kwargs['display']:
+        display(fig)
 
     # close the plot
     if 'dont_close' not in kwargs or not kwargs['dont_close']:
@@ -520,8 +526,11 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
 
     # calculate rolling average week-on-week growth factor    
     WEEK = 7 # days
-    gf = new_.rolling(WEEK).mean()
-    gf_original = gf / gf.shift(WEEK)
+    rolling_new = new_.rolling(WEEK).mean()
+    # corrections can leave micro numbers that yield one 
+    # and not NAN in the division in the second row below
+    rolling_new = rolling_new.where(rolling_new>0.01, other=0.0)
+    gf_original = rolling_new / rolling_new.shift(WEEK)
     
     # adjusted scale
     gf = gf_original.where(gf_original<=1, other=2-(1/gf_original))
@@ -529,6 +538,12 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     # trims the start date
     start = start_point(new_.name)
     gf = gf[gf.index >= start]
+
+    # recent
+    if 'recent' in kwargs:
+        recent = kwargs['recent']
+        gf = gf.iloc[-recent:]
+        del kwargs['recent']
 
     # plot above and below 1 in different colours 
     # - resample to hourly to do this
@@ -540,12 +555,14 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
                                        limit_area="inside",
                                       limit_direction='backward')
     gf = gf1.where(gf1.notna() & gf2.notna(), other=np.nan) 
-    below = gf.where(gf < 1, other=np.nan)                 
+    below = gf.where(gf <= 1, other=np.nan)                 
     
     # plot
-    ax = gf.plot.line(lw=2, color='#B81D13', label='Growth (>1)')
-    below.plot.line(lw=2, color='#008450', label='Decline (<1)', ax=ax)
+    fig, ax = plt.subplots()
+    ax.margins(0.01)
     ax.axhline(1, lw=2, color='gray')
+    ax.plot(gf.index, gf, lw=2, color='#B81D13', label='Growth (>1)')
+    ax.plot(below.index, below, lw=2, color='#008450', label='Decline (<1)')
     ax.legend(loc='best', fontsize='small')
     ax.set_ylim(-0.05, 2.05)
     ax.set_yticks([0, 1/6, 1/3, 1/2, 3/4, 1, 2-3/4, 2-1/2, 2-1/3, 2-1/6, 2])
@@ -555,9 +572,11 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     if 'ylabel' in kwargs:
         kwargs['ylabel'] += '\n(non-linear scale)'
 
+    ax.set_xlim(gf.index.min(), gf.index.max())
     xlim = ax.get_xlim()
-    adj = (xlim[1] - xlim[0]) * 0.01
+    adj = (xlim[1] - xlim[0]) * 0.02
     ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
+
     kwargs['rfooter'] = ' ($GF_{end}=' f'{np.round(gf_original[-1], 2)}$)'
     finalise_plot(ax, **kwargs)
 
@@ -614,11 +633,6 @@ def plot_new_cum(new: pd.Series, cum:pd.Series,
     ylimr = axr.get_ylim()
     axr.set_ylim((0, ylimr[1]))
     
-    # Not sure why - but I need this
-    #if (new < 0).any():
-    #    xlim = axr.get_xlim()
-    #    ax.set_xlim(xlim)
-
     # This makes the dates for xticklabels look a little nicer
     locator = mdates.AutoDateLocator(minticks=4, maxticks=13)
     formatter = mdates.ConciseDateFormatter(locator)
@@ -686,7 +700,7 @@ def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
             name,
             'week',
             dfrom, 
-            title=f'COVID-19 {mode.title()}: {name}',
+            title=f'{name} COVID-19 {mode.title()}',
             rfooter=data_quality[name],
             lfooter=f'Total {mode.lower()}: '
                     f'{int(total[name]):,}; '
