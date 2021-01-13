@@ -524,61 +524,100 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
        Uses the same **kwargs as finalise_plot()
        Note: if rfooter in **kwargs, it will be over-written"""
 
+    MARGINS = 0.02
+    
     # calculate rolling average week-on-week growth factor    
     WEEK = 7 # days
-    rolling_new = new_.rolling(WEEK).mean()
-    # corrections can leave micro numbers that yield one 
-    # and not NAN in the division in the second row below
-    rolling_new = rolling_new.where(rolling_new>0.01, other=0.0)
-    gf_original = rolling_new / rolling_new.shift(WEEK)
-    
-    # adjusted scale
-    gf = gf_original.where(gf_original<=1, other=2-(1/gf_original))
+    rolling_new = new_.rolling(WEEK).mean(skipna=False)
 
+    # 
+    volume = new_.rolling(WEEK).sum()
+    
+    # corrections elsewhere can leave micro numbers that yield one 
+    # and not NAN when calculating the growth factor
+    rolling_new = (rolling_new.where(rolling_new.isna() 
+                   | (rolling_new>0.01), other=0.0))
+    
+    gf_original = rolling_new / rolling_new.shift(WEEK)
+    # restore any nans that may have been lost
+    gf_original = gf_original.where(rolling_new.notna(), other=np.nan)
+    # remove the first week of infinite growth (undefined growth)
+    gf_original = gf_original.replace(np.inf, np.nan)
+    
+    # adjusted scale to be symetric around 1
+    gf = gf_original.where(gf_original<=1, other=2-(1/gf_original))
+    
     # trims the start date
     start = start_point(new_.name)
     gf = gf[gf.index >= start]
+    volume = volume[volume.index >= start]
 
     # recent
     if 'recent' in kwargs:
         recent = kwargs['recent']
         gf = gf.iloc[-recent:]
+        volume = volume.iloc[-recent:]
         del kwargs['recent']
 
+    # let's not produce empty charts
+    if gf.isna().all():
+        return None
+        
     # plot above and below 1 in different colours 
     # - resample to hourly to do this
-    # this code is a bit of a hack
-    gf1 = gf.resample('H').interpolate(method='linear', limit=23, 
+    # - this code is a bit of a hack
+    gf_forward = gf.resample('H').interpolate(method='linear', limit=23, 
                                        limit_area="inside",
                                       limit_direction='forward')
-    gf2 = gf.resample('H').interpolate(method='linear', limit=23, 
+    gf_back = gf.resample('H').interpolate(method='linear', limit=23, 
                                        limit_area="inside",
                                       limit_direction='backward')
-    gf = gf1.where(gf1.notna() & gf2.notna(), other=np.nan) 
-    below = gf.where(gf <= 1, other=np.nan)                 
+    gf_hourly = gf_forward.where(gf_forward.notna() & gf_back.notna(), other=np.nan) 
+    below_hourly = gf_hourly.where(gf_hourly <= 1, other=np.nan)                 
     
     # plot
-    fig, ax = plt.subplots()
-    ax.margins(0.01)
-    ax.axhline(1, lw=2, color='gray')
-    ax.plot(gf.index, gf, lw=2, color='#B81D13', label='Growth (>1)')
-    ax.plot(below.index, below, lw=2, color='#008450', label='Decline (<1)')
-    ax.legend(loc='best', fontsize='small')
-    ax.set_ylim(-0.05, 2.05)
+    fig, axr = plt.subplots()
+    
+    axr.stackplot(volume.index, volume, color='#cccccc', labels=['Volume'])
+    axr.set_ylabel(f"Rolling Total Weekly New Volume")
+    axr.grid(False)
+    span = volume.max() - volume.min()
+    adj = MARGINS * span
+    axr.set_ylim(0 - adj, volume.max() + adj)
+
+    ax = axr.twinx()
+    ax.axhline(1, lw=1, color='gray')
+    ax.plot(gf_hourly.index, gf_hourly, lw=2, color='#B81D13', label='Growth (>1)')
+    ax.plot(below_hourly.index, below_hourly, lw=2, color='#008450', label='Decline (<1)')
+
+    ylim = 0, 2
+    span = 2
+    adj = MARGINS * span
+    ax.set_ylim(0 - adj, 2 + adj)
     ax.set_yticks([0, 1/6, 1/3, 1/2, 3/4, 1, 2-3/4, 2-1/2, 2-1/3, 2-1/6, 2])
     ax.set_yticklabels(["0", "$\\frac{1}{6}$", "$\\frac{1}{3}$", 
                         "$\\frac{1}{2}$", "$\\frac{3}{4}$", "1", 
                         "$\\frac{4}{3}$", "2", "3", "6", "$\infty$"])
-    if 'ylabel' in kwargs:
-        kwargs['ylabel'] += '\n(non-linear scale)'
+    #if 'ylabel' in kwargs:
+    #    kwargs['ylabel'] += '\n(non-linear scale)'
 
     ax.set_xlim(gf.index.min(), gf.index.max())
     xlim = ax.get_xlim()
     adj = (xlim[1] - xlim[0]) * 0.02
     ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
 
-    kwargs['rfooter'] = ' ($GF_{end}=' f'{np.round(gf_original[-1], 2)}$)'
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = axr.get_legend_handles_labels()
+    ax.legend(h1+h2, l1+l2, loc='upper left', fontsize='small')
+
+    
+    if 'rfooter' not in kwargs:
+        kwargs['rfooter'] = ''
+    kwargs['rfooter'] += (' ($GF_{end}=' 
+                          f'{np.round(gf_original[-1], 2)}$)')
+
     finalise_plot(ax, **kwargs)
+    return None 
 
     
 def plot_new_cum(new: pd.Series, cum:pd.Series, 
