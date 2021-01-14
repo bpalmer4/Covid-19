@@ -525,12 +525,16 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
        Note: if rfooter in **kwargs, it will be over-written"""
 
     MARGINS = 0.02
+    mode = 'volume'
+    if 'mode' in kwargs:
+        mode = kwargs['mode']
+        del kwargs['mode']
     
     # calculate rolling average week-on-week growth factor    
     WEEK = 7 # days
     rolling_new = new_.rolling(WEEK).mean(skipna=False)
 
-    # 
+    # we use weekly volume as a plot background 
     volume = new_.rolling(WEEK).sum()
     
     # corrections elsewhere can leave micro numbers that yield one 
@@ -539,8 +543,9 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
                    | (rolling_new>0.01), other=0.0))
     
     gf_original = rolling_new / rolling_new.shift(WEEK)
-    # restore any nans that may have been lost
+    # restore any nans that may have been lost (should not need to do this)
     gf_original = gf_original.where(rolling_new.notna(), other=np.nan)
+
     # remove the first week of infinite growth (undefined growth)
     gf_original = gf_original.replace(np.inf, np.nan)
     
@@ -559,11 +564,16 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
         volume = volume.iloc[-recent:]
         del kwargs['recent']
 
+        
     # let's not produce empty charts
     if gf.isna().all():
         return None
         
-    # plot above and below 1 in different colours 
+    # calibrate volume
+    volume, _, volume_text = simplify_values(volume)
+
+    
+    # --- plot above and below 1 in different colours 
     # - resample to hourly to do this
     # - this code is a bit of a hack
     gf_forward = gf.resample('H').interpolate(method='linear', limit=23, 
@@ -576,47 +586,78 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     below_hourly = gf_hourly.where(gf_hourly <= 1, other=np.nan)                 
     
     # plot
-    fig, axr = plt.subplots()
+    fig, ax_left = plt.subplots()
+
+    # plot growth on the left hand side
+    ax_left.axhline(1, lw=1, color='gray', zorder=20)
+    ax_left.plot(gf_hourly.index, gf_hourly, lw=2, 
+                 color='darkred', label='Growth (>1)', zorder=30)
+    ax_left.plot(below_hourly.index, below_hourly, lw=2, 
+                 color='seagreen', label='Decline (<1)', zorder=40)
+
+    # plot volume on the right hand side
+    ax_right = ax_left.twinx()
+    ax_right.stackplot(volume.index, volume, color='#cccccc', 
+                  labels=['Volume'], zorder=10)
+    ax_right.set_ylabel(f"{volume_text} weekly new {mode}".strip().capitalize())
+    ax_right.grid(False)
+
+    # order right at bottom, left on top of right
+    ax_right.set_zorder(0) # bottom
+    ax_left.set_zorder(1) # top
+    ax_left.patch.set_visible(False)
+    ax_right.patch.set_visible(True)
     
-    axr.stackplot(volume.index, volume, color='#cccccc', labels=['Volume'])
-    axr.set_ylabel(f"Rolling Total Weekly New Volume")
-    axr.grid(False)
-    span = volume.max() - volume.min()
-    adj = MARGINS * span
-    axr.set_ylim(0 - adj, volume.max() + adj)
+    # adjust y-axes to be of the same physical scale
+    span_right = volume.max() - volume.min()
+    adj_right = MARGINS * span_right
+    ax_right.set_ylim(0 - adj_right, volume.max() + adj_right)
+    span_left = 2
+    adj_left = MARGINS * span_left
+    ax_left.set_ylim(0 - adj_left, 2 + adj_left)
 
-    ax = axr.twinx()
-    ax.axhline(1, lw=1, color='gray')
-    ax.plot(gf_hourly.index, gf_hourly, lw=2, color='#B81D13', label='Growth (>1)')
-    ax.plot(below_hourly.index, below_hourly, lw=2, color='#008450', label='Decline (<1)')
-
-    ylim = 0, 2
-    span = 2
-    adj = MARGINS * span
-    ax.set_ylim(0 - adj, 2 + adj)
-    ax.set_yticks([0, 1/6, 1/3, 1/2, 3/4, 1, 2-3/4, 2-1/2, 2-1/3, 2-1/6, 2])
-    ax.set_yticklabels(["0", "$\\frac{1}{6}$", "$\\frac{1}{3}$", 
-                        "$\\frac{1}{2}$", "$\\frac{3}{4}$", "1", 
-                        "$\\frac{4}{3}$", "2", "3", "6", "$\infty$"])
-    #if 'ylabel' in kwargs:
-    #    kwargs['ylabel'] += '\n(non-linear scale)'
-
-    ax.set_xlim(gf.index.min(), gf.index.max())
-    xlim = ax.get_xlim()
-    adj = (xlim[1] - xlim[0]) * 0.02
-    ax.set_xlim(xlim[0]-adj, xlim[1]+adj)
-
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = axr.get_legend_handles_labels()
-    ax.legend(h1+h2, l1+l2, loc='upper left', fontsize='small')
-
+    # adjust x-axis
+    ax_left.set_xlim(gf.index.min(), gf.index.max())
+    xlim = ax_left.get_xlim()
+    adj = (xlim[1] - xlim[0]) * MARGINS
+    ax_left.set_xlim(xlim[0]-adj, xlim[1]+adj)
     
+    # non-linear left ticks
+    ax_left.set_yticks([0, 1/6, 1/3, 1/2, 3/4, 1, 2-3/4, 2-1/2, 
+                        2-1/3, 2-1/6, 2])
+    ax_left.set_yticklabels(["0", "$\\frac{1}{6}$", "$\\frac{1}{3}$", 
+                             "$\\frac{1}{2}$", "$\\frac{3}{4}$", "1", 
+                             "$\\frac{4}{3}$", "2", "3", "6", "$\infty$"])
+
+    # remove xlabel if not present
+    if 'xlabel' not in kwargs:
+        kwargs['xlabel'] = None
+    
+    # annotate non-linear growth scale
+    if 'ylabel' not in kwargs:
+        kwargs['ylabel'] = 'Growth factor'
+    kwargs['ylabel'] += '\n(non-linear scale)'
+
+    # combined legend
+    h1, l1 = ax_left.get_legend_handles_labels()
+    h2, l2 = ax_right.get_legend_handles_labels()
+    legend = ax_left.legend(h1+h2, l1+l2, loc='upper left', 
+                            fontsize='small')
+    legend.set_zorder(100) # at the very top on the left 
+    frame = legend.get_frame()
+    frame.set_facecolor('white')
+
+    # add latest growth to right footer
     if 'rfooter' not in kwargs:
         kwargs['rfooter'] = ''
     kwargs['rfooter'] += (' ($GF_{end}=' 
                           f'{np.round(gf_original[-1], 2)}$)')
+    
+    # add explainer to left footer
+    if 'lfooter' not in kwargs:
+        kwargs['lfooter'] = f'Growth F = ave. daily {mode} this week / ave. for last week'
 
-    finalise_plot(ax, **kwargs)
+    finalise_plot(ax_left, **kwargs)
     return None 
 
     
