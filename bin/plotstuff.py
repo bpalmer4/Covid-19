@@ -314,12 +314,12 @@ def start_point(country_name):
 
 
 def finalise_plot(ax, **kwargs):
-    """A function to automate the completion of a plot, 
-       including saving it to file and closing the plot when done.
+    """A function to automate the completion of simple 
+       matplotlib plots, including saving it to file 
+       and closing the plot when done.
        
        Arguments:
        - ax - required - a matplotlib axes object
-       - title - required - string - the title to appear on the plot
        - matplotlib axes settings - optional - any/all of the 
          following : 
             title, xlabel, ylabel, xticks, yticks, 
@@ -359,13 +359,18 @@ def finalise_plot(ax, **kwargs):
                      'save_type', 'save_tag', 'show', 'display',
                      'dont_close')
     
+    # utility
+    def eprint(*args, **kwargs):
+        print(*args, file=sys.stderr, **kwargs)
+    
     # precautionary
     if 'title' not in kwargs:
-        kwargs['title'] = 'Unknown title'
+        eprint('Warning: the plot title has not been set\n'
+              '\tin the call to finalise_plot().')
     for arg in kwargs:
         if arg not in AXES_SETABLE and arg not in OTHER_SETABLE:
-            print(f'Warning: argument {arg} in call to '
-                  'finalise_plot not recognised')
+            eprint(f'Warning: the argument "{arg}" in the call\n'
+                  '\tto finalise_plot() is not recognised.')
     
     # usual settings
     settings = {}
@@ -397,7 +402,6 @@ def finalise_plot(ax, **kwargs):
         size = kwargs['set_size_inches']
     else:
         size = DEFAULT_SET_SIZE_INCHES
-    #print(size)
     fig.set_size_inches(*size)
     
     # tight layout
@@ -422,14 +426,18 @@ def finalise_plot(ax, **kwargs):
         if 'save_tag' in kwargs:
             save_tag = kwargs['save_tag']
         # file-system safe
-        title = kwargs['title'].replace('[:/]', '-')
+        if 'title' in kwargs:
+            title = kwargs['title'].replace('[:/]', '-')
+        else:
+            title = ''
         save_as = (f'{kwargs["chart_directory"]}{title}'
                    f'{save_tag}.{save_type}')
 
     # - warn if there is no saving arrangement
     else:
-        print('Warning: You need to sepcify either save_as '
-              'or chart_directory to save a plot to file.\n')
+        eprint('Warning: in the call to finalise_plot()\n'
+              '\tyou need to specify either save_as or\n'
+              '\tchart_directory to save a plot to file.')
 
     if save_as:
         fig.savefig(save_as, dpi=125)
@@ -444,9 +452,10 @@ def finalise_plot(ax, **kwargs):
 
     # close the plot
     if 'dont_close' not in kwargs or not kwargs['dont_close']:
-        plt.close('all')
+        plt.close()
     
     return None
+
 
 def _annotate_bars_on_chart(series, ax):
     # annotate the plot
