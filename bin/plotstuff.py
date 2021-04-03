@@ -693,7 +693,7 @@ def plot_new_cum(new: pd.Series, cum:pd.Series,
         'week': 5,
     }
     fig, ax = plt.subplots()
-    ax.margins(0.01)
+    ax.margins(x=0.025)
     ax.bar(new.index, new.values, width=widths[period],
            color='#dd0000', label=new_legend_label)
     ax.set_xlabel(None)
@@ -712,15 +712,16 @@ def plot_new_cum(new: pd.Series, cum:pd.Series,
     ax.legend(h1+h2, l1+l2, loc='upper left', fontsize='small')
 
     # adjust y-limits to be prettier, 
-    # assume ylim[0] is zero, but also check
     # this adjustment should not be needed, but it is
-    ylim = ax.get_ylim()
-    ylim = ylim[0], ylim[1] * 1.025
-    if ylim[0] != 0:
-        # this should not happen - ever.
-        print(f'Warning: ylim[0] is {ylim[0]} for {name}')
-    ylimr = axr.get_ylim()
-    axr.set_ylim((0, ylimr[1]))
+    if new.min() < 0:
+        print(f'Warning: Minimum new value less than zero')
+    if cum.min() < 0:
+        print(f'Warning: Minimum cum value less than zero')
+    MARGIN = 1.025
+    ylim = 0, (new.max() * MARGIN)
+    ax.set_ylim(ylim)
+    ylimr = 0, (cum.max() * MARGIN)
+    axr.set_ylim(ylimr)
     
     # This makes the dates for xticklabels look a little nicer
     locator = mdates.AutoDateLocator(minticks=4, maxticks=13)
