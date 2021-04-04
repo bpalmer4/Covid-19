@@ -440,7 +440,9 @@ def finalise_plot(ax, **kwargs):
               '\tchart_directory to save a plot to file.')
 
     if save_as:
-        fig.savefig(save_as, dpi=125)
+        fig.patch.set_facecolor('white')
+        fig.patch.set_alpha(1.0)
+        fig.savefig(save_as, dpi=300)
     
     # show the plot
     if 'show' in kwargs and kwargs['show']:
@@ -693,7 +695,7 @@ def plot_new_cum(new: pd.Series, cum:pd.Series,
         'week': 5,
     }
     fig, ax = plt.subplots()
-    ax.margins(x=0.025)
+    ax.margins(x=0.015)
     ax.bar(new.index, new.values, width=widths[period],
            color='#dd0000', label=new_legend_label)
     ax.set_xlabel(None)
