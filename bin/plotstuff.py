@@ -610,7 +610,7 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     ax_right = ax_left.twinx()
     ax_right.stackplot(volume.index, volume, color='#cccccc', 
                   labels=['Volume'], zorder=10)
-    ax_right.set_ylabel(f"{volume_text} weekly new {mode}".strip().capitalize())
+    ax_right.set_ylabel(f"{volume_text} weekly {mode}".strip().capitalize())
     ax_right.grid(False)
 
     # order right at bottom, left on top of right
@@ -666,7 +666,7 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     
     # add explainer to left footer
     if 'lfooter' not in kwargs:
-        kwargs['lfooter'] = f'Growth F = ave. daily {mode} this week / ave. for last week'
+        kwargs['lfooter'] = f'Growth F = total {mode} this week / total for last week'
 
     finalise_plot(ax_left, **kwargs)
     return None 
