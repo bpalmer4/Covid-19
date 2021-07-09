@@ -483,7 +483,7 @@ def plot_barh(series, **kwargs):
     
 def simplify_values(series):
     s = series.copy().astype(float)
-    numerical = ('', '$10^3$', '$10^6$', '$10^9$', '$10^12$', '$10^16$')
+    numerical = ('', '$10^3$', '$10^6$', '$10^9$', '$10^12$', '$10^15$')
     text = ('', 'Thousand', 'Million', 'Billion', 'Trillion', 'Quadrillion')
     index = 0
     while s.max() > 1000.0:
@@ -543,10 +543,10 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     
     # calculate rolling average week-on-week growth factor    
     WEEK = 7 # days
-    rolling_new = new_.rolling(WEEK).mean(skipna=False)
+    rolling_new = new_.rolling(WEEK).mean(skipna=True)
 
     # we use weekly volume as a plot background 
-    volume = new_.rolling(WEEK).sum()
+    volume = new_.rolling(WEEK, min_periods=1).sum(skipna=True)
     
     # corrections elsewhere can leave micro numbers that yield one 
     # and not NAN when calculating the growth factor
