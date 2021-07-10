@@ -530,8 +530,8 @@ def plot_orig_smooth(orig, n, mode, name, **kwargs):
     return hendo
 
 
-def plot_growth_factor(new_: pd.Series, **kwargs):
-    """Week on week growth in new_ using a non-linear growth factor axis
+def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
+    """Plot period on period growth in new_ using a non-linear growth factor axis
        Uses the same **kwargs as finalise_plot()
        Note: if rfooter in **kwargs, it will be over-written"""
 
@@ -541,23 +541,22 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
         mode = kwargs['mode']
         del kwargs['mode']
     
-    # calculate rolling average week-on-week growth factor    
-    WEEK = 7 # days
-    rolling_new = new_.rolling(WEEK).mean(skipna=True)
+    # used to calculate rolling period-on-period growth factor    
+    rolling_new = new_.rolling(period).mean(skipna=True)
 
-    # we use weekly volume as a plot background 
-    volume = new_.rolling(WEEK, min_periods=1).sum(skipna=True)
+    # we use volume as a plot background 
+    volume = new_.rolling(period, min_periods=1).sum(skipna=True)
     
     # corrections elsewhere can leave micro numbers that yield one 
     # and not NAN when calculating the growth factor
     rolling_new = (rolling_new.where(rolling_new.isna() 
-                   | (rolling_new>0.01), other=0.0))
+                   | (rolling_new > 0.001), other=0.0))
     
-    gf_original = rolling_new / rolling_new.shift(WEEK)
+    gf_original = rolling_new / rolling_new.shift(period)
     # restore any nans that may have been lost (should not need to do this)
     gf_original = gf_original.where(rolling_new.notna(), other=np.nan)
 
-    # remove the first week of infinite growth (undefined growth)
+    # remove the first period of infinite growth (undefined growth)
     gf_original = gf_original.replace(np.inf, np.nan)
     
     # adjusted scale to be symetric around 1
@@ -575,7 +574,6 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
         volume = volume.iloc[-recent:]
         del kwargs['recent']
 
-        
     # let's not produce empty charts
     if gf.isna().all():
         return None
@@ -602,15 +600,16 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     # plot growth on the left hand side
     ax_left.axhline(1, lw=1, color='gray', zorder=20)
     ax_left.plot(gf_hourly.index, gf_hourly, lw=2, 
-                 color='darkred', label='Growth (>1)', zorder=30)
+                 color='#dd0000', label='Growth (>1)', zorder=30)
     ax_left.plot(below_hourly.index, below_hourly, lw=2, 
                  color='seagreen', label='Decline (<1)', zorder=40)
 
     # plot volume on the right hand side
+    volume_label = f"{volume_text} {mode} ({period}-day sum)".strip().capitalize()
     ax_right = ax_left.twinx()
     ax_right.stackplot(volume.index, volume, color='#cccccc', 
-                  labels=['Volume'], zorder=10)
-    ax_right.set_ylabel(f"{volume_text} weekly {mode}".strip().capitalize())
+                  labels=[volume_label], zorder=10)
+    ax_right.set_ylabel(volume_label)
     ax_right.grid(False)
 
     # order right at bottom, left on top of right
@@ -650,9 +649,13 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     kwargs['ylabel'] += '\n(non-linear scale)'
 
     # combined legend
+    loc = 'upper left'
+    if 'loc' in kwargs:
+        loc = kwargs['loc']
+        del kwargs['loc']
     h1, l1 = ax_left.get_legend_handles_labels()
     h2, l2 = ax_right.get_legend_handles_labels()
-    legend = ax_left.legend(h1+h2, l1+l2, loc='upper left', 
+    legend = ax_left.legend(h1+h2, l1+l2, loc=loc, 
                             fontsize='small')
     legend.set_zorder(100) # at the very top on the left 
     frame = legend.get_frame()
@@ -666,7 +669,7 @@ def plot_growth_factor(new_: pd.Series, **kwargs):
     
     # add explainer to left footer
     if 'lfooter' not in kwargs:
-        kwargs['lfooter'] = f'Growth F = total {mode} this week / total for last week'
+        kwargs['lfooter'] = f'GF = total {mode} this period / total for prev. period'
 
     finalise_plot(ax_left, **kwargs)
     return None 
