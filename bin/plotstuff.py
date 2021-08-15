@@ -672,7 +672,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
         kwargs['lfooter'] = f'GF = total {mode} this period / total for prev. period'
 
     finalise_plot(ax_left, **kwargs)
-    return None 
+    return gf_hourly 
 
     
 def plot_new_cum(new: pd.Series, cum:pd.Series, 
