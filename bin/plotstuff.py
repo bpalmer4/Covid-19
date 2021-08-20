@@ -747,6 +747,37 @@ def plot_new_cum(new: pd.Series, cum:pd.Series,
 
     finalise_plot(ax, **kwargs)
 
+    
+# ---
+    
+def _get_day(series):
+    # find the last day of a pandas Series or DataFrame
+    last_day = series.dropna().index[-1] # last day with data
+    return {
+        0: 'W-MON',
+        1: 'W-TUE',
+        2: 'W-WED',
+        3: 'W-THU',
+        4: 'W-FRI',
+        5: 'W-SAT',
+        6: 'W-SUN',
+    }[last_day.dayofweek]
+
+
+def _get_weekly(daily_series):
+    
+    rule = _get_day(daily_series)
+
+    # convert the data to weekly
+    weekly = daily_series.dropna().resample(rule=rule, closed='right').sum()
+    cum_weekly = weekly.cumsum(skipna=True)
+
+    # reindex by half a week to centre labels on bars
+    weekly.index = weekly.index - pd.Timedelta(3.5, unit='d')
+    cum_weekly.index = cum_weekly.index - pd.Timedelta(3.5, unit='d')
+    
+    return rule, weekly, cum_weekly
+
 
 def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
     """Plot weekly bar charts for daily new cases and deaths
@@ -756,41 +787,17 @@ def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
         - data_quality is a Series of strings,
             used for the left footnote on charts
         - dfrom is a date string to display from
-        Returns: weekly data in a DataFrame """
+        Returns: None """
     
-    DISPLAY_FROM = pd.Timestamp(dfrom)
+    for name, series in daily.iteritems():
     
-    # find the day that the week ends - last day of dataframe
-    LAST_DAY = daily.index[-1]
-    RULE = {
-        0: 'W-MON',
-        1: 'W-TUE',
-        2: 'W-WED',
-        3: 'W-THU',
-        4: 'W-FRI',
-        5: 'W-SAT',
-        6: 'W-SUN',
-    }[LAST_DAY.dayofweek]
-
-    # convert the data to weekly
-    returnable = weekly = daily.resample(rule=RULE, 
-                                         closed='right').sum()
-    total = weekly.sum()
-    cum_weekly = weekly.cumsum()
-    
-    # we move the data by half a week becuase 
-    # we want the bars to be centred
-    weekly.index = weekly.index - pd.Timedelta(3.5, unit='d')
-    cum_weekly.index = cum_weekly.index - pd.Timedelta(3.5, unit='d')
-    
-    for name in weekly.columns:
-    
-        # avoid plotting an empty plot
-        if total[name] == 0: continue
-
+        if series.sum(skipna=True) == 0: 
+            continue # avoid empty plots
+        
+        rule, weekly, weekly_cum = _get_weekly(series)
         plot_new_cum(
-            weekly[name].copy(), 
-            cum_weekly[name].copy(), 
+            weekly, 
+            weekly_cum, 
             mode, 
             name,
             'week',
@@ -798,14 +805,16 @@ def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
             title=f'{name} COVID-19 {mode.title()}',
             rfooter=data_quality[name],
             lfooter=f'Total {mode.lower()}: '
-                    f'{int(total[name]):,}; '
-                    f'(WE={RULE[-3:].title()})',
+                    f'{int(weekly_cum[-1]):,}; '
+                    f'(WE={rule[-3:].title()})',
             **kwargs,
         )
         
-    return returnable
+    return None
 
-    
+
+# ---
+   
 def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
     # constants
     ROLLING_AVE = 7 # days
