@@ -480,7 +480,7 @@ def plot_barh(series, **kwargs):
     ax.margins(0.01)
     finalise_plot(ax, **kwargs)
 
-    
+
 def simplify_values(series):
     s = series.copy().astype(float)
     numerical = ('', '$10^3$', '$10^6$', '$10^9$', '$10^12$', '$10^15$')
@@ -530,10 +530,20 @@ def plot_orig_smooth(orig, n, mode, name, **kwargs):
     return hendo
 
 
-def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
+# ---    
+
+def scale_zero_infinity(s: pd.Series) -> pd.Series:
+    """ Scales numbers between zero and infinity to numbers
+        between zero and two, symmetrically around one."""
+    assert( (s.isna() | s>=0).all() )
+    return s.where(s<=1, other=2-(1.0/s))
+
+
+def plot_growth_factor(new_: pd.Series, period=5, **kwargs):
     """Plot period on period growth in new_ using a non-linear growth factor axis
        Uses the same **kwargs as finalise_plot()
-       Note: if rfooter in **kwargs, it will be over-written"""
+       Note: if rfooter in **kwargs, it will be over-written.
+       Returns the calculated (and unscaled) growth factor."""
 
     MARGINS = 0.02
     mode = 'volume'
@@ -547,10 +557,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     
     # we use volume as a plot background 
     volume = new_.rolling(period, min_periods=1).sum(skipna=True)
-    
     gf_original = volume / volume.shift(period)
-    # restore any nans that may have been lost (should not need to do this)
-    #gf_original = gf_original.where(volume.notna(), other=np.nan)
 
     # remove the first period of infinite (undefined) growth
     gf_original = gf_original.replace(np.inf, np.nan)
@@ -561,7 +568,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     volume = volume[volume.index >= start]
     
     # adjusted scale to be symetric around 1
-    gf_scaled = gf_trimmed.where(gf_trimmed<=1, other=2-(1/gf_trimmed))
+    gf_scaled = scale_zero_infinity(gf_trimmed)
     
     # recent growth charts 
     if 'recent' in kwargs:
@@ -577,7 +584,6 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     # calibrate volume
     volume, _, volume_text = simplify_values(volume)
 
-    
     # --- plot above and below 1 in different colours 
     # - resample to hourly to do this
     # - this code is a bit of a hack
@@ -673,6 +679,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     finalise_plot(ax_left, **kwargs)
     return gf_original 
 
+# ---
     
 def plot_new_cum(new: pd.Series, cum:pd.Series, 
                  mode: str, name: str, period: str, 
