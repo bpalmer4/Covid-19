@@ -540,42 +540,38 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     if 'mode' in kwargs:
         mode = kwargs['mode']
         del kwargs['mode']
+        
+    # a useful warning
+    if new_.isna().sum():
+        print('Warning: unexpected NaNs in input series in plot_growth_factor()')
     
-    # used to calculate rolling period-on-period growth factor    
-    rolling_new = new_.rolling(period).mean(skipna=True)
-
     # we use volume as a plot background 
     volume = new_.rolling(period, min_periods=1).sum(skipna=True)
     
-    # corrections elsewhere can leave micro numbers that yield one 
-    # and not NAN when calculating the growth factor
-    rolling_new = (rolling_new.where(rolling_new.isna() 
-                   | (rolling_new > 0.001), other=0.0))
-    
-    gf_original = rolling_new / rolling_new.shift(period)
+    gf_original = volume / volume.shift(period)
     # restore any nans that may have been lost (should not need to do this)
-    gf_original = gf_original.where(rolling_new.notna(), other=np.nan)
+    #gf_original = gf_original.where(volume.notna(), other=np.nan)
 
-    # remove the first period of infinite growth (undefined growth)
+    # remove the first period of infinite (undefined) growth
     gf_original = gf_original.replace(np.inf, np.nan)
+
+    # trim series to a common start date
+    start = start_point(new_.name)
+    gf_trimmed = gf_original[gf_original.index >= start]
+    volume = volume[volume.index >= start]
     
     # adjusted scale to be symetric around 1
-    gf = gf_original.where(gf_original<=1, other=2-(1/gf_original))
+    gf_scaled = gf_trimmed.where(gf_trimmed<=1, other=2-(1/gf_trimmed))
     
-    # trims the start date
-    start = start_point(new_.name)
-    gf = gf[gf.index >= start]
-    volume = volume[volume.index >= start]
-
-    # recent
+    # recent growth charts 
     if 'recent' in kwargs:
         recent = kwargs['recent']
-        gf = gf.iloc[-recent:]
+        gf_scaled = gf_scaled.iloc[-recent:]
         volume = volume.iloc[-recent:]
         del kwargs['recent']
 
     # let's not produce empty charts
-    if gf.isna().all():
+    if gf_scaled.isna().all():
         return None
         
     # calibrate volume
@@ -585,13 +581,16 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     # --- plot above and below 1 in different colours 
     # - resample to hourly to do this
     # - this code is a bit of a hack
-    gf_forward = gf.resample('H').interpolate(method='linear', limit=23, 
-                                       limit_area="inside",
-                                      limit_direction='forward')
-    gf_back = gf.resample('H').interpolate(method='linear', limit=23, 
-                                       limit_area="inside",
-                                      limit_direction='backward')
-    gf_hourly = gf_forward.where(gf_forward.notna() & gf_back.notna(), other=np.nan) 
+    gf_forward = gf_scaled.resample('H').interpolate(method='linear', 
+                                                     limit=23,
+                                                     limit_area="inside",
+                                                     limit_direction='forward')
+    gf_back = gf_scaled.resample('H').interpolate(method='linear', 
+                                                  limit=23, 
+                                                  limit_area="inside",
+                                                  limit_direction='backward')
+    gf_hourly = gf_forward.where(gf_forward.notna() & gf_back.notna(), 
+                                 other=np.nan) 
     below_hourly = gf_hourly.where(gf_hourly <= 1, other=np.nan)                 
     
     # plot
@@ -605,7 +604,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
                  color='seagreen', label='Decline (<1)', zorder=40)
 
     # plot volume on the right hand side
-    volume_label = f"{volume_text} {mode} ({period}-day sum)".strip().capitalize()
+    volume_label = f"{volume_text} {mode} ({period}-day rolling sum)".strip().capitalize()
     ax_right = ax_left.twinx()
     ax_right.stackplot(volume.index, volume, color='#cccccc', 
                   labels=[volume_label], zorder=10)
@@ -627,7 +626,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
     ax_left.set_ylim(0 - adj_left, 2 + adj_left)
 
     # adjust x-axis
-    ax_left.set_xlim(gf.index.min(), gf.index.max())
+    ax_left.set_xlim(gf_scaled.index.min(), gf_scaled.index.max())
     xlim = ax_left.get_xlim()
     adj = (xlim[1] - xlim[0]) * MARGINS
     ax_left.set_xlim(xlim[0]-adj, xlim[1]+adj)
@@ -672,7 +671,7 @@ def plot_growth_factor(new_: pd.Series, period=7, **kwargs):
         kwargs['lfooter'] = f'GF = total {mode} this period / total for prev. period'
 
     finalise_plot(ax_left, **kwargs)
-    return gf_hourly 
+    return gf_original 
 
     
 def plot_new_cum(new: pd.Series, cum:pd.Series, 
