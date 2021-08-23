@@ -272,12 +272,14 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
         - corrected daily new data
         - corrected cumulative data"""
 
+    nans = uncorrected_cum.isna()
+
     uncorrected_cum = uncorrected_cum.ffill().fillna(0)
     uncorrected_daily_new = get_uncorrected_daily_new(uncorrected_cum)
     corrected_daily_new = get_corrected_daily_new(uncorrected_daily_new, verbose)
     corrected_cumulative = corrected_daily_new.cumsum().dropna(
         how='all', axis='index')
-
+        
     # sanity checks - cumulative totals should not have changed
     delta = 0.0001
     check = ( (uncorrected_cum.iloc[-1]-delta < corrected_cumulative.iloc[-1]) &
@@ -291,6 +293,10 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
     assert(len(uncorrected_cum) == len(corrected_cumulative))
     assert(len(uncorrected_daily_new) == len(corrected_daily_new))
     
+    # restore nans 
+    for data in (uncorrected_daily_new, corrected_daily_new, corrected_cumulative):
+        data.where(~nans, other=np.nan, inplace=True)
+
     return (uncorrected_daily_new,
             corrected_daily_new,
             corrected_cumulative)
