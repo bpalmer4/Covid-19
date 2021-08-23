@@ -282,10 +282,12 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
     delta = 0.0001
     check = ( (uncorrected_cum.iloc[-1]-delta < corrected_cumulative.iloc[-1]) &
               (corrected_cumulative.iloc[-1] < uncorrected_cum.iloc[-1]+delta) )
-    assert(check.all())
+    assert(check.all(), f'Check: \n{uncorrected_cum.iloc[-1]}\n'
+                        f'{corrected_cumulative.iloc[-1]}')
     check2 = (((uncorrected_daily_new.sum() - delta) < corrected_daily_new.sum())
               & (corrected_daily_new.sum() < (uncorrected_daily_new.sum() + delta)))
-    assert(check2.all())
+    assert(check2.all(), f'Check: \n{uncorrected_cum.iloc[-1]}\n'
+                         f'{corrected_cumulative.iloc[-1]}')
     assert(len(uncorrected_cum) == len(corrected_cumulative))
     assert(len(uncorrected_daily_new) == len(corrected_daily_new))
     
