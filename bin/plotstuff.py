@@ -309,6 +309,9 @@ converter = mdates.ConciseDateConverter()
 munits.registry[np.datetime64] = converter
 munits.registry[datetime.date] = converter
 munits.registry[datetime.datetime] = converter
+munits.registry[pd.Timestamp] = converter
+munits.registry[pd.Period] = converter
+
 
 def start_point(country_name):
     if country_name == 'China':
@@ -332,7 +335,7 @@ def finalise_plot(ax, **kwargs):
          following : 
             title, xlabel, ylabel, xticks, yticks, 
             xticklabels, yticklabels, xlim, ylim, 
-            xscale, yscale, 
+            xscale, yscale, margin
        - lfooter - optional - string - left side chart footer
        - rfooter - optional - string - right side chart footer
        - tight_layout_pad - optional - float - tight layout padding
@@ -361,11 +364,11 @@ def finalise_plot(ax, **kwargs):
     DEFAULT_SAVE_TAG = ''
     AXES_SETABLE = ('title', 'xlabel', 'ylabel', 'xticks', 'yticks', 
                     'xticklabels', 'yticklabels', 'xlim', 'ylim', 
-                    'xscale', 'yscale',)
+                    'xscale', 'yscale')
     OTHER_SETABLE = ('lfooter', 'rfooter', 'tight_layout_pad', 
                      'set_size_inches', 'save_as', 'chart_directory',
                      'save_type', 'save_tag', 'show', 'display',
-                     'dont_close')
+                     'dont_close', 'margins')
     
     # utility
     def eprint(*args, **kwargs):
@@ -380,14 +383,18 @@ def finalise_plot(ax, **kwargs):
             eprint(f'Warning: the argument "{arg}" in the call\n'
                   '\tto finalise_plot() is not recognised.')
     
-    # usual settings
-    settings = {}
+    # usual axes settings
+    axes_settings = {}
     for arg in kwargs:
         if arg not in AXES_SETABLE:
             continue
-        settings[arg] = kwargs[arg]
-    if len(settings):
-        ax.set(**settings)
+        axes_settings[arg] = kwargs[arg]
+    if len(axes_settings):
+        ax.set(**axes_settings)
+    
+    # margins
+    if 'margins' in kwargs and kwargs['margins'] is not None:
+        ax.margins(kwargs['margins'])
     
     fig = ax.figure
     
