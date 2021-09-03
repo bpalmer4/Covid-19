@@ -239,7 +239,7 @@ def positive_correct_daily(series: pd.Series, verbose)-> pd.Series:
 
 
 def get_corrected_daily_new(input_frame: pd.DataFrame, verbose)-> pd.DataFrame:
-    output_frame = pd.DataFrame()
+    output_frame = pd.DataFrame(np.nan, columns=input_frame.columns, index=input_frame.index)
     for col in input_frame.columns:
         series = negative_correct_daily(input_frame[col], verbose)
         output_frame[col] = positive_correct_daily(series, verbose)
@@ -823,7 +823,7 @@ def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
             name,
             'week',
             dfrom, 
-            title=f'{name} COVID-19 {mode.title()}',
+            title=f'COVID-19 {name} {mode.title()}',
             rfooter=data_quality[name],
             lfooter=f'Total {mode.lower()}: '
                     f'{int(weekly_cum[-1]):,}; '
