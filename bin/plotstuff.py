@@ -1,9 +1,12 @@
 # plot stuff - a series of functions to assist with (a) data ETL 
 #              and (b) plotting for COVID-19 
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.units as munits
+import matplotlib.ticker as ticker
+
 import datetime
 import pandas as pd
 import numpy as np
@@ -397,6 +400,16 @@ def finalise_plot(ax, **kwargs):
         ax.margins(kwargs['margins'])
     
     fig = ax.figure
+    
+    # y-axis locator
+    if ax.get_yaxis().get_scale() == 'linear':
+        ax.yaxis.set_major_locator(ticker.MaxNLocator(11))
+        #ylim = ax.get_ylim()
+        #span = ylim[1] - ylim[0]
+        #if span < 30:
+        #    ax.yaxis.set_major_locator(ticker.AutoLocator())
+        #else:
+        #    ax.yaxis.set_major_locator(ticker.MaxNLocator(11))
     
     # right footnote
     if 'rfooter' in kwargs and kwargs['rfooter'] is not None:
