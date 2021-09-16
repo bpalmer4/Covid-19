@@ -371,7 +371,7 @@ def finalise_plot(ax, **kwargs):
     OTHER_SETABLE = ('lfooter', 'rfooter', 'tight_layout_pad', 
                      'set_size_inches', 'save_as', 'chart_directory',
                      'save_type', 'save_tag', 'show', 'display',
-                     'dont_close', 'margins')
+                     'dont_close', 'margins', 'no_locator')
     
     # utility
     def eprint(*args, **kwargs):
@@ -401,15 +401,9 @@ def finalise_plot(ax, **kwargs):
     
     fig = ax.figure
     
-    # y-axis locator
-    if ax.get_yaxis().get_scale() == 'linear':
+    # increase y-axis locator
+    if ax.get_yaxis().get_scale() == 'linear' and 'no_locator' not in kwargs:
         ax.yaxis.set_major_locator(ticker.MaxNLocator(11))
-        #ylim = ax.get_ylim()
-        #span = ylim[1] - ylim[0]
-        #if span < 30:
-        #    ax.yaxis.set_major_locator(ticker.AutoLocator())
-        #else:
-        #    ax.yaxis.set_major_locator(ticker.MaxNLocator(11))
     
     # right footnote
     if 'rfooter' in kwargs and kwargs['rfooter'] is not None:
