@@ -742,7 +742,7 @@ def plot_new_cum(new: pd.Series, cum:pd.Series,
     # add a legend
     h1, l1 = ax.get_legend_handles_labels()
     h2, l2 = axr.get_legend_handles_labels()
-    ax.legend(h1+h2, l1+l2, loc='upper left', fontsize='small')
+    ax.legend(h1+h2, l1+l2, loc='best', fontsize='small')
 
     # adjust y-limits to be prettier, 
     # this adjustment should not be needed, but it is
