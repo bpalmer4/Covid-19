@@ -78,18 +78,28 @@ def replace_proportional(series: pd.Series, point:pd.Timestamp,
         Returns: 
         - an ajdusted series with the same sum as the original series"""
     
+    # try to limit any adjustments to the previous period of ...
+    MAX_ADJUSTMENT_SPAN = 120 # days
+    
     # sanity checks
-    #assert(series.index.is_monotonic_increasing)
-    #assert(series.index.is_unique)
+    assert(series.index.is_monotonic_increasing)
+    assert(series.index.is_unique)
     
     # replace original and remember the adjustment from the original
     adjustment = series[point] - replacement
     series.loc[point] = replacement
             
     # apply adjustment to this point and all preceeding data
+    basement = point - pd.Timedelta(days=MAX_ADJUSTMENT_SPAN)
     base = series.index[0]
-    window = (series.index <= point)
-    #assert((series[window] >= 0).all()) # a sanity check
+    if basement > base:
+        available = series[(series.index >= basement) 
+                           & (series.index < point)].sum()
+        if adjustment > 0 or available > abs(adjustment):
+            base = basement
+    
+    window = (series.index >= base) & (series.index <= point)
+    assert((series[window] >= 0).all()) # a sanity check
     sum_for_window = series[window].sum()
     if sum_for_window > 0:
         factor = (sum_for_window + adjustment) / sum_for_window
@@ -178,7 +188,7 @@ def negative_correct_daily(series: pd.Series, verbose)-> pd.Series:
         if verbose:
             print(f'There are negatives in {series.name}')
             print(f'{series[negatives]}')
-        replacers = rolling_mean_excluding_self(series)
+        replacers = rolling_mean_excluding_self(series).fillna(0)
         # make the adjustments
         for fix_me in negatives:
             if series[fix_me] >= MINOR_NEG:
@@ -287,14 +297,18 @@ def dataframe_correction(uncorrected_cum: pd.DataFrame,
     delta = 0.0001
     check = ( (uncorrected_cum.iloc[-1]-delta < corrected_cumulative.iloc[-1]) &
               (corrected_cumulative.iloc[-1] < uncorrected_cum.iloc[-1]+delta) )
-    assert(check.all(), f'Check: \n{uncorrected_cum.iloc[-1]}\n'
-                        f'{corrected_cumulative.iloc[-1]}')
+    if not check.all():
+        print(f'WARNING: \n{uncorrected_cum.iloc[-1]}\n'
+                        f'{corrected_cumulative.iloc[-1]}\n'
+                        f'{uncorrected_daily_new.head(5)}\n'
+                        f'{corrected_daily_new.head(5)}')
     check2 = (((uncorrected_daily_new.sum() - delta) < corrected_daily_new.sum())
               & (corrected_daily_new.sum() < (uncorrected_daily_new.sum() + delta)))
-    assert(check2.all(), f'Check: \n{uncorrected_cum.iloc[-1]}\n'
+    if not check2.all():
+        print('WARNING: \n{uncorrected_cum.iloc[-1]}\n'
                          f'{corrected_cumulative.iloc[-1]}')
-    assert(len(uncorrected_cum) == len(corrected_cumulative))
-    assert(len(uncorrected_daily_new) == len(corrected_daily_new))
+    assert len(uncorrected_cum) == len(corrected_cumulative)
+    assert len(uncorrected_daily_new) == len(corrected_daily_new) 
     
     # restore nans 
     for data in (uncorrected_daily_new, corrected_daily_new, corrected_cumulative):
@@ -557,7 +571,7 @@ def plot_orig_smooth(orig, n, mode, name, **kwargs):
 def scale_zero_infinity(s: pd.Series) -> pd.Series:
     """ Scales numbers between zero and infinity to numbers
         between zero and two, symmetrically around one."""
-    assert( (s.isna() | s>=0).all() )
+    assert  (s.isna() | s>=0).all() 
     return s.where(s<=1, other=2-(1.0/s))
 
 
