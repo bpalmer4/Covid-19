@@ -956,7 +956,7 @@ def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
             name,
             "week",
             dfrom,
-            title=f"COVID-19 {name} {mode.title()}",
+            title=f"Weekly C-19 {mode.title()} - {name}",
             rfooter=data_quality[name],
             lfooter=f"Total {mode.lower()}: "
             f"{int(weekly_cum[-1]):,}; "
