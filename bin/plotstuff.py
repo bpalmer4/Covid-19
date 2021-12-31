@@ -264,18 +264,18 @@ def get_corrected_daily_new(input_frame: pd.DataFrame, verbose) -> pd.DataFrame:
     return output_frame
 
 
-def get_uncorrected_daily_new(frame: pd.DataFrame) -> pd.DataFrame:
+def get_uncorrected_daily_new(cum_frame: pd.DataFrame) -> pd.DataFrame:
 
     # prepend a row of zeros - for the diff
-    start = frame.index.min()
+    start = cum_frame.index.min()
     previous = start - pd.Timedelta(days=1)
-    ret_frame = frame.copy().ffill().fillna(0).T
-    ret_frame[previous] = 0  # prepend a row of zeros
-    ret_frame = ret_frame.T.sort_index()
+    empty_row = pd.Series(0, index=cum_frame.columns)
+    empty_row.name = previous # the name becomes the row index
+    cum_frame = cum_frame.append(empty_row).sort_index(ascending=True)
 
-    # diff, drop the resulting NAN row
-    ret_frame = ret_frame.diff().dropna(how="all", axis="index")
-    return ret_frame
+    # remove NAs, diff, drop the previously inserted row
+    daily_frame = cum_frame.ffill().fillna(0).diff().drop(previous)
+    return daily_frame
 
 
 def dataframe_correction(
