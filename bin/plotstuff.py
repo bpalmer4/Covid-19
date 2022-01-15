@@ -14,7 +14,7 @@ import math
 import copy
 import sys
 from Henderson import Henderson
-from typing import Tuple, Set, Dict, List, Union, Optional
+from typing import List, Dict, Tuple, Set, Optional, Any, Iterable, Callable
 
 
 ### --- data cleaning
@@ -336,28 +336,169 @@ munits.registry[pd.Timestamp] = converter
 munits.registry[pd.Period] = converter
 
 
-def start_point(country_name):
-    if country_name == "China":
-        return pd.Timestamp("2019-12-30")
-    if country_name in [
-        "South Korea",
-        "Iran",
-        "France",
-        "Italy",
-        "Spain",
-        "San Marino",
-        "Australia",
-        "ACT",
-        "NT",
-        "NSW",
-        "QLD",
-        "SA",
-        "TAS",
-        "VIC",
-    ]:
-        return pd.Timestamp("2020-02-15")
-    return pd.Timestamp("2020-03-01")
+# --- private
 
+def get_selected_list(d:Dict[str, Any], selection:List[str], keep:bool=False
+                ) -> Dict[str, Any]:
+    """Return in a dictionary the items in the input dictionary d that
+       are in the list selection. Do not change the original dictionary"""
+    returnable = {key: d[key] for key in selection if key in d}
+    for key in selection:
+        if key in d and not keep:
+            del d[key]
+    return returnable
+
+
+def get_selected_item(d:Dict[str, Any], key:str, default:Any=None, keep:bool=False) -> Any:
+    """Return the item from the dictionary d with key, or return the default.
+       Delete thie item from the dictionary if it was found there."""
+    returnable = d[key] if key in d else default
+    if key in d and not keep:
+        del d[key]
+    return returnable
+
+
+def add_defaults(dictionary:Dict[str, Any], default_dict:Dict[str, Any]
+                ) -> Dict[str, Any]:
+    """Add default values to a dictionary, if they are not present in the 
+       dictionary. Return the compilation as a new dictionary."""
+    return {**default_dict, **dictionary}
+
+
+def scatter(ax:plt.axes, series:pd.Series, kwargs:Dict[str, Any]):
+    """Add a scatter plot to an axes."""
+    recent = get_selected_item(kwargs, key='recent', default=0)
+    USE = ('c', 's', 'alpha', 'label')
+    DEFAULTS = {'c': '#dd0000', 's': 10}
+    params = add_defaults(get_selected_list(kwargs, USE), DEFAULTS)
+    ax.scatter(series.index[-recent:], series.iloc[-recent:], **params)
+    return None
+
+
+def line(ax:plt.axes, series:pd.Series, kwargs:Dict[str, Any]) -> None:
+    """Add a line plot to a chart."""
+    recent = get_selected_item(kwargs, key='recent', default=0)
+    USE = ('color', 'c', 'alpha', 'label', 'linestyle', 'ls',
+           'linewidth', 'lw', 'marker')
+    param = get_selected_list(kwargs, USE)
+    ax.plot(series.index[-recent:], series.iloc[-recent:], **param)
+    return None
+
+
+def bar(ax:plt.axes, series:pd.Series, kwargs:Dict[str, Any]) -> None:
+    """Add a bar plot to a chart."""
+    recent = get_selected_item(kwargs, key='recent', default=0)
+    USE = ('color', 'c', 'alpha', 'label', 'width')
+    param = get_selected_list(kwargs, USE)
+    ax.bar(series.index[-recent:], series.iloc[-recent:], **param)
+    return None
+
+
+def annotate_barh(ax:plt.axes, series:pd.Series, kwargs:Dict[str, Any]) -> None:
+    # annotate the plot
+    round_ = get_selected_item(kwargs, key='round', default=None)
+    span = series.max() - series.min()
+    inside = series.min() + span / 2.0
+    spacer = span / 150.0
+    for y, x in enumerate(series):
+        xpos = x if x < inside else 0
+        color = "black" if xpos > 0 else "white"
+        x = round(x, round_) if round_ else x
+        ax.annotate(
+            f"{x:,}", xy=(xpos + spacer, y), 
+            va="center", color=color, size="small"
+        )
+    return None
+
+
+def barh(ax:plt.axes, series:pd.Series, kwargs:Dict[str, Any]) -> None:
+    """Add a horizontal bar chart."""
+    USE = ('color', 'c', 'alpha', 'label', 'width')
+    param = get_selected_list(kwargs, USE)
+    ax.barh(series.index.values, series.values, **param)
+    annotate_barh(ax, series, kwargs)
+    return None
+
+
+def multi_ma(ax:plt.axes, series:pd.Series, kwargs:Dict[str, Any]) -> None:
+    """Add one or more moving averages to a chart."""
+    
+    periods = get_selected_item(kwargs, key='periods', default=[7, 14])
+    colors = get_selected_item(kwargs, key='colors', default=['dodgerblue', 'navy'])
+    linestyles = get_selected_item(kwargs, key='linestyles', default=['-', '-'])
+    linewidths = get_selected_item(kwargs, key='linewidths', default=[1.5, 2.5])
+    
+    for i, period in enumerate(periods):
+        ma = series.rolling(period, center=True).mean()
+        arg_dict = kwargs.copy()
+        arg_dict['c'] = colors[i%len(colors)]
+        arg_dict['ls'] = linestyles[i%len(linestyles)]
+        arg_dict['lw'] = linewidths[i%len(linewidths)]
+        arg_dict['label'] = f'{period}-day centred moving average'
+        line(ax, ma, {**kwargs, **arg_dict})
+    return None
+
+
+SCALES = {
+    0: '',
+    3: 'thousand', 6: 'million', 9: 'billion',
+    12: 'trillion', 15: 'quadrillion', 18: 'quintillion',
+}
+
+def scale_series(series:pd.Series, kwargs:Dict[str, Any]) -> Tuple[pd.Series, int, str]:
+    """Scale a series, if 'scale_y'=True in kwargs. Also adjust ylabel text
+       if that is present in kwargs. Factor is as in 10 ** factor. 
+       Returns a tuple: adjusted series, factor, factor-text."""
+    
+    # do we need to act
+    scale_y = get_selected_item(kwargs, 'scale_y', default=False)
+    scale_x = get_selected_item(kwargs, 'scale_x', default=False)
+    if not scale_x and not scale_y:
+        return series, 0, ''
+    
+    label = 'xlabel' if scale_x else 'ylabel'
+    max = series.abs().max()
+    factor = 0 if max < 1000 else np.floor(np.log10(max) / 3.0) * 3
+    if factor > 0:
+        if label not in kwargs:
+            kwargs[label] = f'{SCALES[factor].title()}'
+        else:
+            kwargs[label] = f'{kwargs[label]} ({SCALES[factor]})'
+    return (series / (10 ** factor), factor, SCALES[factor])
+
+
+def _get_day(series):
+    # find the last day of a pandas Series or DataFrame
+    last_day = series.dropna().index[-1]  # last day with data
+    return {
+        0: "W-MON",
+        1: "W-TUE",
+        2: "W-WED",
+        3: "W-THU",
+        4: "W-FRI",
+        5: "W-SAT",
+        6: "W-SUN",
+    }[last_day.dayofweek]
+
+
+def adjust_ylim(ax, series) -> None:
+    # Note: assume a zero minimum.
+    MARGIN = 0.02
+    maxi = series.max()
+    ax.set_ylim([0, maxi*(1+MARGIN)])
+
+    
+def adjust_xlim(ax, axr, cum):
+    MARGIN = 0.02
+    mini = cum.index.min()
+    maxi = cum.index.max()
+    span = (maxi - mini) / pd.Timedelta(days=1)
+    adjustment = pd.Timedelta(days=(span / 2) * MARGIN)
+    ax.set_xlim([mini-adjustment, maxi+adjustment])
+
+
+
+# --- public 
 
 def finalise_plot(ax, **kwargs):
     """A function to automate the completion of simple 
@@ -370,7 +511,8 @@ def finalise_plot(ax, **kwargs):
          following : 
             title, xlabel, ylabel, xticks, yticks, 
             xticklabels, yticklabels, xlim, ylim, 
-            xscale, yscale, margin
+            x
+            , yscale, margin
        - lfooter - optional - string - left side chart footer
        - rfooter - optional - string - right side chart footer
        - tight_layout_pad - optional - float - tight layout padding
@@ -551,466 +693,250 @@ def finalise_plot(ax, **kwargs):
     return None
 
 
-def _annotate_bars_on_chart(series, ax):
-    # annotate the plot
-    span = series.max() - series.min()
-    inside = series.min() + span / 2.0
-    spacer = span / 150.0
-    for y, x in enumerate(series):
-        xpos = x if x < inside else 0
-        color = "black" if xpos > 0 else "white"
-        ax.annotate(
-            f"{x:,}", xy=(xpos + spacer, y), va="center", color=color, size="small"
-        )
+def plot_series_with_ma(series, **kwargs) -> None:
+    """Plot recent daily incidence data onto a scatter plot or bar chart 
+       with moving averages."""
 
-
-def plot_barh(series, **kwargs):
-    """plot series as a horizontal bar chart"""
-
-    fig, ax = plt.subplots(nrows=1, ncols=1)
-    ax.barh(series.index, series, color="gray")
-    _annotate_bars_on_chart(series, ax)
-    ax.margins(0.01)
-    finalise_plot(ax, **kwargs)
-
-
-def simplify_values(series):
-    s = series.copy().astype(float)
-    numerical = ("", "$10^3$", "$10^6$", "$10^9$", "$10^12$", "$10^15$")
-    text = ("", "Thousand", "Million", "Billion", "Trillion", "Quadrillion")
-    index = 0
-    while s.max() > 1000.0:
-        s = s / 1000.0
-        index += 1
-    return s, numerical[index], text[index]
-
-
-def plot_orig_smooth(orig, n, mode, name, **kwargs):
-    """plot series in original and smoothed forms,
-       return the smoothed series
-       Note: kwargs['ylabel'] is overwritten"""
-
-    # get series into simplified values and create ylabel
-    orig, _, text = simplify_values(orig)
-    label = f"{text} daily new {mode}".strip().capitalize()
-    kwargs["ylabel"] = label
-
-    # Henderson moving average
-    hendo = Henderson(orig.dropna(), n)
-    start = start_point(name)
-    hendo = hendo[hendo.index >= start]
-    ax = hendo.plot.line(
-        lw=2, color="hotpink", label=f"{n}-term Henderson moving average"
-    )
-
-    # simple rolling average
-    m = 7
-    smooth = orig.rolling(m, center=True).mean()
-    smooth = smooth[smooth.index >= start]
-    smooth.plot.line(lw=2, color="darkorange", ax=ax, label=f"{m}-term rolling average")
-
-    # original data
-    orig = orig[orig.index >= start]
-    orig.plot.line(lw=1, color="royalblue", ax=ax, label=label)
-
-    # final touches
-    ax.legend(loc="best")
-    xlim = ax.get_xlim()
-    adj = (xlim[1] - xlim[0]) * 0.01
-    ax.set_xlim(xlim[0] - adj, xlim[1] + adj)
-    finalise_plot(ax, **kwargs)
-    return hendo
-
-
-# ---
-
-
-def scale_zero_infinity(s: pd.Series) -> pd.Series:
-    """ Scales numbers between zero and infinity to numbers
-        between zero and two, symmetrically around one."""
-    assert (s.isna() | s >= 0).all()
-    return s.where(s <= 1, other=2 - (1.0 / s))
-
-
-def plot_growth_factor(new_: pd.Series, period=5, **kwargs):
-    """Plot period on period growth in new_ using a non-linear growth factor axis
-       Uses the same **kwargs as finalise_plot()
-       Note: if rfooter in **kwargs, it will be over-written.
-       Returns the calculated (and unscaled) growth factor."""
-
-    MARGINS = 0.02
-    mode = "volume"
-    if "mode" in kwargs:
-        mode = kwargs["mode"]
-        del kwargs["mode"]
-
-    # a useful warning
-    if new_.isna().sum():
-        print("Warning: unexpected NaNs in input series in plot_growth_factor()")
-
-    # we use volume as a plot background
-    volume = new_.rolling(period, min_periods=1).sum(skipna=True)
-    gf_original = volume / volume.shift(period)
-
-    # remove the first period of infinite (undefined) growth
-    gf_original = gf_original.replace(np.inf, np.nan)
-
-    # trim series to a common start date
-    start = start_point(new_.name)
-    gf_trimmed = gf_original[gf_original.index >= start]
-    volume = volume[volume.index >= start]
-
-    # adjusted scale to be symetric around 1
-    gf_scaled = scale_zero_infinity(gf_trimmed)
-
-    # recent growth charts
-    if "recent" in kwargs:
-        recent = kwargs["recent"]
-        gf_scaled = gf_scaled.iloc[-recent:]
-        volume = volume.iloc[-recent:]
-        del kwargs["recent"]
-
-    # let's not produce empty charts
-    if gf_scaled.isna().all():
+    # Some standard arguemnts
+    recent = get_selected_item(d=kwargs, key='recent', default=0, keep=True)
+    trunc_series = series[-recent:]
+    if trunc_series.isna().all() or trunc_series.sum() == 0:
         return None
-
-    # calibrate volume
-    volume, _, volume_text = simplify_values(volume)
-
-    # --- plot above and below 1 in different colours
-    # - resample to hourly to do this
-    # - this code is a bit of a hack
-    gf_forward = gf_scaled.resample("H").interpolate(
-        method="linear", limit=23, limit_area="inside", limit_direction="forward"
-    )
-    gf_back = gf_scaled.resample("H").interpolate(
-        method="linear", limit=23, limit_area="inside", limit_direction="backward"
-    )
-    gf_hourly = gf_forward.where(gf_forward.notna() & gf_back.notna(), other=np.nan)
-    below_hourly = gf_hourly.where(gf_hourly <= 1, other=np.nan)
-
-    # plot
-    fig, ax_left = plt.subplots()
-
-    # plot growth on the left hand side
-    ax_left.axhline(1, lw=1, color="gray", zorder=20)
-    ax_left.plot(
-        gf_hourly.index,
-        gf_hourly,
-        lw=2,
-        color="#dd0000",
-        label="Growth (>1)",
-        zorder=30,
-    )
-    ax_left.plot(
-        below_hourly.index,
-        below_hourly,
-        lw=2,
-        color="seagreen",
-        label="Decline (<1)",
-        zorder=40,
-    )
-
-    # plot volume on the right hand side
-    volume_label = (
-        f"{volume_text} {mode} ({period}-day rolling sum)".strip().capitalize()
-    )
-    ax_right = ax_left.twinx()
-    ax_right.stackplot(
-        volume.index, volume, color="#cccccc", labels=[volume_label], zorder=10
-    )
-    ax_right.set_ylabel(volume_label)
-    ax_right.grid(False)
-
-    # order right at bottom, left on top of right
-    ax_right.set_zorder(0)  # bottom
-    ax_left.set_zorder(1)  # top
-    ax_left.patch.set_visible(False)
-    ax_right.patch.set_visible(True)
-
-    # adjust y-axes to be of the same physical scale
-    span_right = volume.max() - volume.min()
-    adj_right = MARGINS * span_right
-    ax_right.set_ylim(0 - adj_right, volume.max() + adj_right)
-    span_left = 2
-    adj_left = MARGINS * span_left
-    ax_left.set_ylim(0 - adj_left, 2 + adj_left)
-
-    # adjust x-axis
-    ax_left.set_xlim(gf_scaled.index.min(), gf_scaled.index.max())
-    xlim = ax_left.get_xlim()
-    adj = (xlim[1] - xlim[0]) * MARGINS
-    ax_left.set_xlim(xlim[0] - adj, xlim[1] + adj)
-
-    # non-linear left ticks
-    ax_left.set_yticks(
-        [
-            0,
-            1 / 6,
-            1 / 3,
-            1 / 2,
-            3 / 4,
-            1,
-            2 - 3 / 4,
-            2 - 1 / 2,
-            2 - 1 / 3,
-            2 - 1 / 6,
-            2,
-        ]
-    )
-    ax_left.set_yticklabels(
-        [
-            "0",
-            "$\\frac{1}{6}$",
-            "$\\frac{1}{3}$",
-            "$\\frac{1}{2}$",
-            "$\\frac{3}{4}$",
-            "1",
-            "$\\frac{4}{3}$",
-            "2",
-            "3",
-            "6",
-            "$\infty$",
-        ]
-    )
-
-    # remove xlabel if not present
-    if "xlabel" not in kwargs:
-        kwargs["xlabel"] = None
-
-    # annotate non-linear growth scale
-    if "ylabel" not in kwargs:
-        kwargs["ylabel"] = "Growth factor"
-    kwargs["ylabel"] += "\n(non-linear scale)"
-
-    # combined legend
-    loc = "upper left"
-    if "loc" in kwargs:
-        loc = kwargs["loc"]
-        del kwargs["loc"]
-    h1, l1 = ax_left.get_legend_handles_labels()
-    h2, l2 = ax_right.get_legend_handles_labels()
-    legend = ax_left.legend(h1 + h2, l1 + l2, loc=loc, fontsize="small")
-    legend.set_zorder(100)  # at the very top on the left
-    frame = legend.get_frame()
-    frame.set_facecolor("white")
-
-    # add latest growth to right footer
-    if "rfooter" not in kwargs:
-        kwargs["rfooter"] = ""
-    kwargs["rfooter"] += " ($GF_{end}=" f"{np.round(gf_original[-1], 2)}$)"
-
-    # add explainer to left footer
-    if "lfooter" not in kwargs:
-        kwargs["lfooter"] = f"GF = total {mode} this period / total for prev. period"
-
-    finalise_plot(ax_left, **kwargs)
-    return gf_original
-
-
-# ---
-
-
-def plot_new_cum(
-    new: pd.Series,
-    cum: pd.Series,
-    mode: str,
-    name: str,
-    period: str,
-    dfrom="2020-01-21",
-    **kwargs,
-):
-
-    # adjust input data for large numbers
-    new, numerical, text = simplify_values(new)
-    cum, cnumerical, ctext = simplify_values(cum)
-    new_legend_label = f"{text} new {mode}/{period} (left)".strip().capitalize()
-    cum_legend_label = f"{ctext} cumulative {mode} (right)".strip().capitalize()
-    new_ylabel = f"{numerical} new {mode.lower()}/{period}".strip().capitalize()
-    cum_ylabel = f"{cnumerical} cumulative {mode}".strip().capitalize()
-
-    # adjust START
-    DISPLAY_FROM = pd.Timestamp(dfrom)
-    new = new[new.index >= DISPLAY_FROM]
-    cum = cum[cum.index >= DISPLAY_FROM]
-
-    # plot new
-    widths = {
-        "day": 0.8,
-        "week": 5,
-    }
+    lfooter = f'Total in period: {int(trunc_series.sum()):,}'
+    
+    # data scaling ...
+    series, factor, f_text = scale_series(series, kwargs)
+    
+    # individual plot
+    plot_type = get_selected_item(kwargs, key='plot_type', default='scatter')
     fig, ax = plt.subplots()
-    ax.margins(x=0.015)
-    ax.bar(
-        new.index,
-        new.values,
-        width=widths[period],
-        color="#dd0000",
-        label=new_legend_label,
-    )
-    ax.set_xlabel(None)
+    kwargs_copy = kwargs.copy()
+    if plot_type == 'bar':
+        bar(ax, series, kwargs_copy)
+    else:
+        scatter(ax, series, kwargs_copy)
+    
+    # plot moving averages
+    multi_ma(ax, series, kwargs)
 
-    # plot cumulative
-    axr = ax.twinx()
-    axr.plot(
-        cum.index, cum.values, lw=2.0, color="#0000dd", ls="--", label=cum_legend_label
-    )
-    axr.set_ylabel(None)
-    axr.grid(False)
-
-    # add a legend
-    h1, l1 = ax.get_legend_handles_labels()
-    h2, l2 = axr.get_legend_handles_labels()
-    ax.legend(h1 + h2, l1 + l2, loc="best", fontsize="small")
-
-    # adjust y-limits to be prettier,
-    # this adjustment should not be needed, but it is
-    if new.min() < 0:
-        print(f"Warning: Minimum new value less than zero")
-    if cum.min() < 0:
-        print(f"Warning: Minimum cum value less than zero")
-    MARGIN = 1.025
-    ylim = 0, (new.max() * MARGIN)
-    ax.set_ylim(ylim)
-    ylimr = 0, (cum.max() * MARGIN)
-    axr.set_ylim(ylimr)
-
-    # This makes the dates for xticklabels look a little nicer
-    locator = mdates.AutoDateLocator(minticks=4, maxticks=13)
-    formatter = mdates.ConciseDateFormatter(locator)
-    ax.xaxis.set_major_locator(locator)
-    ax.xaxis.set_major_formatter(formatter)
-
-    # y-axis labels - the hard way
-    fig = ax.figure
-    lHeight = 0.96
-    lInstep = 0.02
-    fig.text(
-        1.0 - lInstep,
-        lHeight,
-        cum_ylabel,
-        ha="right",
-        va="top",
-        fontsize=11,
-        color="#333333",
-    )
-    fig.text(
-        lInstep, lHeight, new_ylabel, ha="left", va="top", fontsize=11, color="#333333"
-    )
-
+    # finalise
+    ax.legend(loc='best')
     finalise_plot(ax, **kwargs)
-
-
-# ---
-
-
-def _get_day(series):
-    # find the last day of a pandas Series or DataFrame
-    last_day = series.dropna().index[-1]  # last day with data
-    return {
-        0: "W-MON",
-        1: "W-TUE",
-        2: "W-WED",
-        3: "W-THU",
-        4: "W-FRI",
-        5: "W-SAT",
-        6: "W-SUN",
-    }[last_day.dayofweek]
-
-
-def _get_weekly(daily_series):
-
-    rule = _get_day(daily_series)
-
-    # convert the data to weekly
-    weekly = daily_series.dropna().resample(rule=rule, closed="right").sum()
-    cum_weekly = weekly.cumsum(skipna=True)
-
-    # reindex by half a week to centre labels on bars
-    weekly.index = weekly.index - pd.Timedelta(3.5, unit="d")
-    cum_weekly.index = cum_weekly.index - pd.Timedelta(3.5, unit="d")
-
-    return rule, weekly, cum_weekly
-
-
-def plot_weekly(daily, mode, data_quality, dfrom="2020-01-21", **kwargs):
-    """Plot weekly bar charts for daily new cases and deaths
-        Function paramters:
-        - daily is a DataFrame of daily timeseries data
-        - mode is one of 'cases' or 'deaths' 
-        - data_quality is a Series of strings,
-            used for the left footnote on charts
-        - dfrom is a date string to display from
-        Returns: None """
-
-    for name, series in daily.iteritems():
-
-        if series.sum(skipna=True) == 0:
-            continue  # avoid empty plots
-
-        rule, weekly, weekly_cum = _get_weekly(series)
-        plot_new_cum(
-            weekly,
-            weekly_cum,
-            mode,
-            name,
-            "week",
-            dfrom,
-            title=f"Weekly C-19 {mode.title()} - {name}",
-            rfooter=data_quality[name],
-            lfooter=f"Total {mode.lower()}: "
-            f"{int(weekly_cum[-1]):,}; "
-            f"(WE={rule[-3:].title()})",
-            **kwargs,
-        )
-
     return None
 
 
-# ---
+def plot_weekly(series:pd.Series, **kwargs):
+    
+    recent = get_selected_item(d=kwargs, key='recent', default=0)
+    daily = series[-recent:].dropna()
+    
+    rule = _get_day(series)
+    weekly = daily.resample(rule=rule, closed="right").sum()
+    max_weekly = weekly.max()
+    last_week = weekly.iloc[-1]
+    weekly.index = weekly.index - pd.Timedelta(3.5, unit="d")
+    cum = daily.cumsum()
+    max_cum = cum.iloc[-1]
+    
+    if max_cum <= 0:
+        # Noting to see here
+        return None
+    
+    kwargs['title'] = '' if 'title' not in kwargs else f'Weekly New {kwargs["title"]}'
+    wkwargs = kwargs.copy()
+    wkwargs['width'] = 5
+    wkwargs['color'] = '#cc0000'
+    wkwargs['ylabel'] = '' if 'ylabel' not in wkwargs else f'Weekly New {wkwargs["ylabel"]}'
+    weekly, wfactor, wf_text = scale_series(weekly, wkwargs)
+    wkwargs['label'] = wkwargs['ylabel']
+    
+    ckwargs = kwargs.copy()
+    ckwargs['color'] = 'navy'
+    ckwargs['lw'] = '2.5'
+    ckwargs['ls'] = '-.'
+    ckwargs['ylabel'] = '' if 'ylabel' not in ckwargs else f'Cum. {ckwargs["ylabel"]}'
+    cum, cfactor, cf_text = scale_series(cum, ckwargs)
+    right_ylabel = ckwargs['ylabel']
+    ckwargs['label'] = ckwargs['ylabel']
+
+    # plot
+    fig, ax = plt.subplots()
+    bar(ax, weekly, wkwargs)
+    axr = ax.twinx()
+    line(axr, cum, ckwargs)
+    
+    # adjustments because I am twinning the x axis
+    axr.set_ylabel(right_ylabel)
+    axr.grid(False)
+    adjust_ylim(ax, weekly)
+    adjust_ylim(axr, cum)
+    adjust_xlim(ax, axr, cum)
+    
+    # legend
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = axr.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, loc="best", fontsize="small")
+    
+    wkwargs['lfooter'] = (
+        f'WE={rule[-3:].title()}; '
+        f'Max weekly={int(max_weekly):,}; '
+        f'Over the past week={int(last_week):,}; '
+        f'Cum. total={int(max_cum):,}'
+    )
+    
+    finalise_plot(ax, **wkwargs)
+    return None
 
 
-def plot_regional_per_captia(new_df, mode, regions, population, **kwargs):
-    # constants
-    ROLLING_AVE = 7  # days
-    POWER = 6
-    PER_CAPITA = 10 ** POWER  # population
-
-    k_copy = copy.deepcopy(kwargs)
-
-    # data titdy-up
-    df = new_df.rolling(ROLLING_AVE, center=True).mean()  # smooth
-    df = df.div(population / PER_CAPITA, axis=1)  # per capita
-
-    # rework
-    if not "ylabel" in k_copy:
-        k_copy["ylabel"] = (
-            f"Daily new {mode} per $10^{POWER}$ population"
-            + f"\nCentred {ROLLING_AVE}-day rolling average"
+def loop_over_frame(df:pd.DataFrame, desc:str, func:Callable, **kwargs):
+    
+    for name in df.columns:
+        print(name)
+        kwargs_copy = kwargs.copy()
+        series = df[name]
+        kwargs_copy['title'] = f'{desc} - {name}' if 'title' not in kwargs_copy else kwargs_copy['title']
+        kwargs_copy['ylabel'] = desc if 'ylabel' not in kwargs_copy else kwargs_copy['ylabel']
+        
+        func(
+            series,
+            **kwargs_copy,
         )
-    if not "xlabel" in k_copy:
-        k_copy["xlabel"] = None
+        
+    return None
 
-    saved_k = copy.deepcopy(k_copy)
-    for region, states in regions.items():
 
-        # plot context in light grey
-        ax = df.plot(c="#aaaaaa", lw=0.5)
-        ax.get_legend().remove()
+def plot_final_barh(df, **kwargs):
+    
+    # get latest values
+    series = df.ffill().iloc[-1]
+    last_valid = df.apply(pd.Series.last_valid_index)
+    labels = (
+        # Hint: if this is printing rge day as a float, 
+        # then you have NaT in yout index. 
+        last_valid.dt.day.astype(str) 
+        + "-" 
+        + last_valid.dt.month_name().astype(str).str[:3]
+    )
+    series.index = series.index.astype(str) + ' ' + labels
+    
+    # scale and sort the data series
+    series, factor, f_text = scale_series(series, kwargs)
+    force_int = get_selected_item(kwargs, key='force_int', default=False)
+    if force_int and not factor: 
+        series = series.astype(int)
+    series = series.sort_values().copy()
+    
+    # plot
+    fig, ax = plt.subplots()
+    barh(ax, series, kwargs)
+    finalise_plot(ax, **kwargs)
+    return None
 
-        k_copy["title"] = f"COVID-19 Daily New {mode.title()} - {region}"
 
-        # plot this group in color
-        subset = df[states]
-        ax_new = ax.twinx()
-        subset.plot(ax=ax_new, linewidth=2.5, legend=True)
-        ax_new.legend(title=None, loc="upper left")
-        ax_new.grid(False)
-        ax_new.set_yticklabels([])
-        ax_new.set_ylim(ax.get_ylim())
+def plot_multiline(df, **kwargs):
+    color_dict = get_selected_item(kwargs, key='color_dict', default=None)
+    USE = ('alpha', 'linestyle', 'ls',
+           'linewidth', 'lw', 'marker',)
+    param = get_selected_list(kwargs, USE)
+    param['recent'] = get_selected_item(kwargs, key='recent', default=0)
+    
+    fig, ax = plt.subplots()
+    for col in df.columns:
+        p = param.copy()
+        if color_dict:
+            p['c'] = color_dict[col]
+        p['label'] = col
+        line(ax, df[col], p)
+    legend = {'loc': 'best', }
+    if 'legend_ncol' in kwargs:
+        legend['ncol'] = get_selected_item(kwargs, key='legend_ncol', default=1)
+    ax.legend(**legend)
+    finalise_plot(ax, **kwargs)    
+    return None
 
-        # finalise
-        finalise_plot(ax, **k_copy)
 
-        # next loop
-        k_copy = copy.deepcopy(saved_k)
+def daily_growth_rate(series, **kwargs):
+    PERIOD = 7
+    THRESHOLD = 10 # minimum cases per day on average
+    
+    # growth rate
+    series = series.rolling(PERIOD).mean()
+    series = series.where(series >= THRESHOLD, other=np.nan) # ignore small data
+    k = np.log(series / series.shift(PERIOD)) / PERIOD  * 100 # daily growth rate %
+    if k.isna().all():
+        return None
+    fig, ax = plt.subplots()
+    line(ax, k, kwargs)
+    ax.axhline(0, color='#999999', lw=0.5)
+    kwargs['lfooter'] = (
+        f'When daily new cases >= {THRESHOLD}; '
+        f'Australian transmission, a {PERIOD}-day MA, and growth over {PERIOD}-days.'
+    )
+    copy_kwargs = kwargs.copy()
+    
+    finalise_plot(ax, **kwargs)
+    return None
+
+
+def five_day_on_five_day(series, **kwargs):
+    PERIOD = 5
+    THRESHOLD = 20 # minimum cases per day on average
+    
+    # growth rate
+    series = series.rolling(PERIOD).mean()
+    series = series.where(series >= THRESHOLD, other=np.nan) # ignore small data
+    growth = series / series.shift(PERIOD)
+
+    # plot
+    fig, ax = plt.subplots()
+    line(ax, growth, kwargs)
+    ax.axhline(1, color='#999999', lw=0.5)
+    kwargs['lfooter'] = (
+        f'When mean daily new cases >={THRESHOLD}; '
+        f'Aus transmission only; '
+    )
+    copy_kwargs = kwargs.copy()
+    
+    finalise_plot(ax, **kwargs)
+    return None
+
+
+def short_run_projection(series, **kwargs):
+    PERIODS = [4, 7] # days 
+    COLORS = ['#444444', 'darkred']
+    SMOOTH_TERM = 15 # days
+    smooth = Henderson(series.dropna(), SMOOTH_TERM)
+    PROJECT = 7
+    
+    fig, ax = plt.subplots()
+    kw = kwargs.copy()
+    kw['label'] = 'Daily new cases'
+    kw['c'] = 'royalblue'
+    kw['lw'] = 1
+    line(ax, series, kw)
+    
+    kw = kwargs.copy()
+    kw['label'] = f'Smoothed {SMOOTH_TERM}-term HMA'
+    kw['c'] = 'darkorange'
+    kw['lw'] = 2
+    line(ax, smooth, kw)
+    
+    for i, p in enumerate(PERIODS):
+        x0 = smooth[-p-1]
+        xt = smooth[-1]
+        k = np.log(xt / x0) / p
+        a = smooth[-1] 
+        t = pd.Series(range(0, PROJECT+1), 
+                      index=pd.date_range(start=series.index[-1], 
+                                          periods=PROJECT+1))
+        projection = a * np.exp(k * t)
+        
+        kw = kwargs.copy()
+        kw['label'] = f'Projection based on past {p}-days'
+        kw['c'] = COLORS[i]
+        kw['lw'] = 2.5
+        kw['ls'] = ':'
+        line(ax, projection[1:], kw)
+        
+    ax.legend(loc='best')
+    finalise_plot(ax, **kwargs)
