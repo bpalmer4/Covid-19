@@ -567,6 +567,9 @@ def finalise_plot(ax, **kwargs):
         "margins",
         "no_locator",
     )
+    IGNORE = {
+        'recent',
+    }
 
     # utility
     def eprint(*args, **kwargs):
@@ -579,7 +582,7 @@ def finalise_plot(ax, **kwargs):
             "\tin the call to finalise_plot()."
         )
     for arg in kwargs:
-        if arg not in AXES_SETABLE and arg not in OTHER_SETABLE:
+        if arg not in AXES_SETABLE and arg not in OTHER_SETABLE and arg not in IGNORE:
             eprint(
                 f'Warning: the argument "{arg}" in the call\n'
                 "\tto finalise_plot() is not recognised."
@@ -739,7 +742,7 @@ def plot_weekly(series:pd.Series, **kwargs):
     max_cum = cum.iloc[-1]
     
     if max_cum <= 0:
-        # Noting to see here
+        print('Nothing to see here')
         return None
     
     kwargs['title'] = '' if 'title' not in kwargs else f'Weekly New {kwargs["title"]}'
@@ -790,12 +793,20 @@ def plot_weekly(series:pd.Series, **kwargs):
 
 def loop_over_frame(df:pd.DataFrame, desc:str, func:Callable, **kwargs):
     
+    lfooter = False
+    if 'lfoot_series' in kwargs:
+        lfoot_series = get_selected_item(kwargs, key='lfoot_series', default=None)
+        lfoot_text = get_selected_item(kwargs, key='lfoot_text', default='{}')
+        lfooter = True
+        
     for name in df.columns:
-        print(name)
+        #print(name)
         kwargs_copy = kwargs.copy()
         series = df[name]
         kwargs_copy['title'] = f'{desc} - {name}' if 'title' not in kwargs_copy else kwargs_copy['title']
         kwargs_copy['ylabel'] = desc if 'ylabel' not in kwargs_copy else kwargs_copy['ylabel']
+        if lfooter:
+            kwargs_copy['lfooter'] = lfoot_text.format(lfoot_series[name])
         
         func(
             series,
@@ -806,6 +817,8 @@ def loop_over_frame(df:pd.DataFrame, desc:str, func:Callable, **kwargs):
 
 
 def plot_final_barh(df, **kwargs):
+    
+    MAXIMUM = 40
     
     # get latest values
     series = df.ffill().iloc[-1]
@@ -818,6 +831,9 @@ def plot_final_barh(df, **kwargs):
         + last_valid.dt.month_name().astype(str).str[:3]
     )
     series.index = series.index.astype(str) + ' ' + labels
+    
+    if len(series) > MAXIMUM:
+        series = series.sort_values(ascending=False).iloc[:MAXIMUM]
     
     # scale and sort the data series
     series, factor, f_text = scale_series(series, kwargs)
