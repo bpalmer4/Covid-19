@@ -871,7 +871,7 @@ def plot_multiline(df, **kwargs):
     return None
 
 
-def daily_growth_rate(series, **kwargs):
+def daily_growth_rate(series:pd.Series, **kwargs):
     PERIOD = 7
     THRESHOLD = 10 # minimum cases per day on average
     
@@ -884,17 +884,13 @@ def daily_growth_rate(series, **kwargs):
     fig, ax = plt.subplots()
     line(ax, k, kwargs)
     ax.axhline(0, color='#999999', lw=0.5)
-    kwargs['lfooter'] = (
-        f'When daily new cases >= {THRESHOLD}; '
-        f'Australian transmission, a {PERIOD}-day MA, and growth over {PERIOD}-days.'
-    )
-    copy_kwargs = kwargs.copy()
-    
+    previous_lfooter = kwargs['lfooter'] if 'lfooter' in kwargs else ''
+    kwargs['lfooter'] = f'When daily new cases >= {THRESHOLD}; ' + previous_lfooter
     finalise_plot(ax, **kwargs)
     return None
 
 
-def five_day_on_five_day(series, **kwargs):
+def five_day_on_five_day(series:pd.Series, **kwargs):
     PERIOD = 5
     THRESHOLD = 20 # minimum cases per day on average
     
@@ -907,12 +903,8 @@ def five_day_on_five_day(series, **kwargs):
     fig, ax = plt.subplots()
     line(ax, growth, kwargs)
     ax.axhline(1, color='#999999', lw=0.5)
-    kwargs['lfooter'] = (
-        f'When mean daily new cases >={THRESHOLD}; '
-        f'Aus transmission only; '
-    )
-    copy_kwargs = kwargs.copy()
-    
+    previous_lfooter = kwargs['lfooter'] if 'lfooter' in kwargs else ''
+    kwargs['lfooter'] = f'When daily new cases >= {THRESHOLD}; ' + previous_lfooter
     finalise_plot(ax, **kwargs)
     return None
 
