@@ -1,20 +1,28 @@
 # plot stuff - a series of functions to assist with (a) data ETL
 #              and (b) plotting for COVID-19
 
+# general python imports
+from typing import List, Dict, Tuple, Set, Optional, Any, Iterable, Callable, Union
+import datetime
+import math
+import copy
+import sys
+import csv
+from re import match
+from io import StringIO
+
+# data science imports
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.units as munits
 import matplotlib.ticker as ticker
 
-import datetime
 import pandas as pd
 import numpy as np
-import math
-import copy
-import sys
+
+# local imports
 from Henderson import Henderson
-from typing import List, Dict, Tuple, Set, Optional, Any, Iterable, Callable
 
 
 ### --- data cleaning
@@ -486,6 +494,7 @@ def adjust_ylim(ax, series) -> None:
     MARGIN = 0.02
     maxi = series.max()
     ax.set_ylim([0, maxi*(1+MARGIN)])
+    return None
 
     
 def adjust_xlim(ax, axr, cum):
@@ -495,7 +504,25 @@ def adjust_xlim(ax, axr, cum):
     span = (maxi - mini) / pd.Timedelta(days=1)
     adjustment = pd.Timedelta(days=(span / 2) * MARGIN)
     ax.set_xlim([mini-adjustment, maxi+adjustment])
+    return None
 
+
+def get_comma_sep_pairs(s:str, type_convert_numbers=True) -> Dict[str,Union[str,int,float]]:
+    """Split string into comma separated key=value pairs, return as a dictionary.
+       Type convert numbers to int or float if type_convert_numbers is set to True."""
+    
+    pairs = csv.reader(StringIO(s))
+    results={}
+    for items in pairs:
+        for p in items:
+            k, v = p.split('=', maxsplit=1)
+            if type_convert_numbers:
+                if match(r'^-?\d+$', v):
+                    v = int(v)
+                elif match(r'^-?\d+(?:\.\d+)$', v):
+                    v = float(v)
+            results[k] = v
+    return results
 
 
 # --- public 
@@ -535,7 +562,7 @@ def finalise_plot(ax, **kwargs):
     """
 
     # defaults
-    DEFAULT_SET_SIZE_INCHES = (8, 4)
+    DEFAULT_SET_SIZE_INCHES = (9, 4.5)
     DEFAULT_SAVE_TYPE = "png"
     DEFAULT_TIGHT_PADDING = 1.2
     DEFAULT_SAVE_TAG = ""
@@ -566,6 +593,7 @@ def finalise_plot(ax, **kwargs):
         "dont_close",
         "margins",
         "no_locator",
+        "axhline",
     )
     IGNORE = {
         'recent',
@@ -600,14 +628,18 @@ def finalise_plot(ax, **kwargs):
     # margins
     if "margins" in kwargs and kwargs["margins"] is not None:
         ax.margins(kwargs["margins"])
-
-    fig = ax.figure
+        
+    # reference line
+    if "axhline" in kwargs:
+        keywords = get_comma_sep_pairs(kwargs['axhline'])
+        ax.axhline(**keywords) # Note: need to specify y=...
 
     # increase y-axis locator
     if ax.get_yaxis().get_scale() == "linear" and "no_locator" not in kwargs:
         ax.yaxis.set_major_locator(ticker.MaxNLocator(11))
 
     # right footnote
+    fig = ax.figure
     if "rfooter" in kwargs and kwargs["rfooter"] is not None:
         fig.text(
             0.99,
@@ -910,7 +942,7 @@ def five_day_on_five_day(series:pd.Series, **kwargs):
 
 
 def short_run_projection(series, **kwargs):
-    PERIODS = [4, 7] # days 
+    PERIODS = [3, 7] # days 
     COLORS = ['#444444', 'darkred']
     SMOOTH_TERM = 15 # days
     smooth = Henderson(series.dropna(), SMOOTH_TERM)
@@ -932,6 +964,9 @@ def short_run_projection(series, **kwargs):
     for i, p in enumerate(PERIODS):
         x0 = smooth[-p-1]
         xt = smooth[-1]
+        if x0 <= 0 or xt <= 0:
+            # avoid the problematic
+            continue
         k = np.log(xt / x0) / p
         a = smooth[-1] 
         t = pd.Series(range(0, PROJECT+1), 
@@ -940,7 +975,7 @@ def short_run_projection(series, **kwargs):
         projection = a * np.exp(k * t)
         
         kw = kwargs.copy()
-        kw['label'] = f'Projection based on past {p}-days'
+        kw['label'] = f'Projection based on recent {p}-day growth'
         kw['c'] = COLORS[i]
         kw['lw'] = 2.5
         kw['ls'] = ':'
