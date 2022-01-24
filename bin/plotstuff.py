@@ -277,9 +277,8 @@ def get_uncorrected_daily_new(cum_frame: pd.DataFrame) -> pd.DataFrame:
     # prepend a row of zeros - for the diff
     start = cum_frame.index.min()
     previous = start - pd.Timedelta(days=1)
-    empty_row = pd.Series(0, index=cum_frame.columns)
-    empty_row.name = previous # the name becomes the row index
-    cum_frame = cum_frame.append(empty_row).sort_index(ascending=True)
+    empty_row = pd.DataFrame(0, columns=cum_frame.columns, index=[previous])
+    cum_frame = pd.concat([cum_frame, empty_row]).sort_index(ascending=True)
 
     # remove NAs, diff, drop the previously inserted row
     daily_frame = cum_frame.ffill().fillna(0).diff().drop(previous)
