@@ -17,6 +17,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import matplotlib.units as munits
 import matplotlib.ticker as ticker
+from matplotlib import cm
 
 import pandas as pd
 import numpy as np
@@ -526,6 +527,16 @@ def get_comma_sep_pairs(s:str, type_convert_numbers=True) -> Dict[str,Union[str,
 
 # --- public 
 
+
+def get_color_list(length:int, map_name:str='viridis') -> List[str]:
+    """Return a list of colours of specified length from a matplotlib color map.
+       See: https://matplotlib.org/stable/tutorials/colors/colormaps.html"""
+    cmap = cm.get_cmap(map_name)
+    colours = (cmap(x, bytes=True) 
+                  for x in np.linspace(start=0, stop=1, num=length))
+    return [f'#{x[0]:02x}{x[1]:02x}{x[2]:02x}' for x in colours]
+
+
 def finalise_plot(ax, **kwargs):
     """A function to automate the completion of simple 
        matplotlib plots, including saving it to file 
@@ -949,7 +960,7 @@ def short_run_projection(series, **kwargs):
     
     fig, ax = plt.subplots()
     kw = kwargs.copy()
-    kw['label'] = 'Daily new cases'
+    kw['label'] = kw['ylabel']
     kw['c'] = 'royalblue'
     kw['lw'] = 1
     line(ax, series, kw)
