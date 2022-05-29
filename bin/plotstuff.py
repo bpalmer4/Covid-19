@@ -940,13 +940,20 @@ def five_day_on_five_day(series:pd.Series, **kwargs):
     series = series.rolling(PERIOD).mean()
     series = series.where(series >= THRESHOLD, other=np.nan) # ignore small data
     growth = series / series.shift(PERIOD)
+    
+    if growth.isna().all():
+        return None
 
     # plot
     fig, ax = plt.subplots()
     line(ax, growth, kwargs)
     ax.axhline(1, color='#999999', lw=0.5)
     previous_lfooter = kwargs['lfooter'] if 'lfooter' in kwargs else ''
-    kwargs['lfooter'] = f'When daily new cases >= {THRESHOLD}; ' + previous_lfooter
+    kwargs['lfooter'] = (
+        f'When daily new cases >= {THRESHOLD}; ' 
+        + f'Latest datapoint: {growth.dropna().iloc[-1]:.2f}; '
+        + previous_lfooter
+    )
     finalise_plot(ax, **kwargs)
     return None
 
